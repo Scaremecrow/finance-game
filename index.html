@@ -1,0 +1,4358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0e11">
+<title>财富自由之路 · 虚拟投资模拟器</title>
+<style>
+:root{
+  --bg:#0b0e11;
+  --panel:#161a1f;
+  --panel-2:#1e2329;
+  --panel-3:#252b33;
+  --line:#2b3139;
+  --text:#eaecef;
+  --muted:#848e9c;
+  --dim:#5e6673;
+  --up:#f6465d;
+  --down:#0ecb81;
+  --gold:#fcd535;
+  --blue:#2f80ed;
+  --red:#f6465d;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+/* 兜底：元素自带 display 时（如 .sp-grid{display:flex}）会盖掉 UA 的 [hidden]{display:none} */
+[hidden]{display:none!important}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.5;overscroll-behavior:none;
+}
+#app{
+  max-width:480px;margin:0 auto;
+  height:100%;height:100dvh;            /* 定高 + 内部滚动，HUD 才会真正固定 */
+  display:flex;flex-direction:column;position:relative;
+  background:var(--bg);overflow:hidden;
+}
+::-webkit-scrollbar{width:0;height:0}
+
+/* ============ HUD ============ */
+.hud{
+  position:sticky;top:0;z-index:30;background:var(--panel);
+  border-bottom:1px solid var(--line);padding:12px 14px 10px;
+}
+.hud-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.nw-label{font-size:11px;color:var(--muted);letter-spacing:.5px}
+/* 常驻财富称号：挂在"总资产"旁边，跨过门槛就换一档（配色跟着 RATING 的 tone 走） */
+.rank-tag{font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:5px;letter-spacing:.3px;
+  background:rgba(94,102,115,.22);color:var(--muted);white-space:nowrap}
+.rank-tag.gold{background:rgba(252,213,53,.16);color:var(--gold)}
+.rank-tag.good{background:rgba(14,203,129,.15);color:#4ce0a5}
+.rank-tag.bad{background:rgba(246,70,93,.14);color:#ff8f9c}
+.nw-value{font-size:26px;font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1.25}
+.nw-value .cur{font-size:15px;color:var(--muted);font-weight:500;margin-right:2px}
+.nw-delta{font-size:12px;font-weight:500;font-variant-numeric:tabular-nums}
+.run-badge{
+  display:flex;align-items:center;gap:6px;flex-shrink:0;
+  background:var(--panel-2);border:1px solid var(--line);border-radius:999px;
+  padding:5px 10px;font-size:11px;color:var(--muted);font-weight:600;
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.run-badge .rd-dot{width:6px;height:6px;border-radius:50%;background:var(--down);flex-shrink:0}
+.run-badge.paused{color:var(--dim)}
+.run-badge.paused .rd-dot{background:var(--dim)}
+/* ---- 固定速度条：常驻底部 tab 栏之上，任何时候都能调，不用划到顶 ---- */
+.speed-bar{
+  position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(63px + env(safe-area-inset-bottom));
+  z-index:45;display:flex;gap:2px;align-items:center;
+  background:rgba(22,26,31,.94);backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:999px;
+  padding:4px 5px;box-shadow:0 8px 26px rgba(0,0,0,.6);
+}
+.speed-bar .sb-label{font-size:9.5px;color:var(--dim);padding:0 5px 0 10px;letter-spacing:.5px}
+.speed-bar button{
+  background:transparent;border:0;color:var(--muted);font-size:11px;font-weight:600;
+  padding:6px 9px;border-radius:999px;cursor:pointer;font-family:inherit;min-width:32px;
+  transition:background .15s ease,color .15s ease;
+}
+.speed-bar button.active{background:var(--gold);color:#0b0e11}
+.speed-bar button[data-sp="0"].active{background:var(--up);color:#fff}
+.hud-sub{display:flex;gap:14px;margin-top:8px;font-size:11.5px;color:var(--muted);flex-wrap:wrap}
+.hud-sub b{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums}
+
+/* ============ VIEWS ============ */
+.view{flex:1;overflow-y:auto;padding:10px 12px 138px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.view[hidden]{display:none}
+
+/* ============ ASSET CARD ============ */
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:12px;margin-bottom:9px;
+}
+.card-head{display:flex;align-items:center;gap:9px}
+.ic{
+  width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
+  font-size:17px;flex-shrink:0;background:var(--panel-2);
+}
+.ic.bond{background:rgba(14,203,129,.14)}
+.ic.fund{background:rgba(47,128,237,.16)}
+.ic.stock{background:rgba(252,213,53,.14)}
+.ic.crypto{background:rgba(246,70,93,.14)}
+.asset-name{font-size:14px;font-weight:500;display:flex;align-items:center;gap:6px}
+.tag{font-size:9.5px;padding:1px 5px;border-radius:4px;font-weight:600;letter-spacing:.3px}
+.tag.t1{background:rgba(14,203,129,.16);color:#0ecb81}
+.tag.t2{background:rgba(47,128,237,.16);color:#5fa3f5}
+.tag.t3{background:rgba(252,213,53,.16);color:#fcd535}
+.tag.t4{background:rgba(246,70,93,.16);color:#f6465d}
+.asset-sub{font-size:11px;color:var(--dim);margin-top:1px}
+.price-box{margin-left:auto;text-align:right}
+.price{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.chg{font-size:11px;font-weight:500;font-variant-numeric:tabular-nums}
+.up{color:var(--up)}
+.down{color:var(--down)}
+.flat{color:var(--muted)}
+
+/* ── 高估 / 低估指示（价格相对「合理价」的偏离）────────────────
+   指针位置按该资产的稳态波动归一化（债券 ±2.6%、加密 ±67%），
+   所以四个刻度能横着比：都在中间 = 都在合理价附近。 */
+.dev-row{display:flex;align-items:center;gap:9px;margin-top:10px}
+.dev-bar{
+  position:relative;flex:1;height:5px;border-radius:3px;
+  background:linear-gradient(90deg,rgba(14,203,129,.32),rgba(132,142,156,.14) 50%,rgba(246,70,93,.32));
+}
+.dev-bar::after{                       /* 中线 = 合理价 */
+  content:'';position:absolute;left:50%;top:-3px;width:1px;height:11px;
+  background:var(--muted);opacity:.5;
+}
+.dev-bar i{
+  position:absolute;top:-3.5px;width:12px;height:12px;margin-left:-6px;border-radius:50%;
+  background:var(--muted);box-shadow:0 0 0 2px var(--panel);transition:left .3s ease;
+}
+.dev-bar i.up{background:var(--up)}
+.dev-bar i.down{background:var(--down)}
+.dev-txt{
+  font-size:10.5px;font-weight:600;white-space:nowrap;text-align:right;
+  font-variant-numeric:tabular-nums;min-width:62px;
+}
+.spark{height:30px;margin:8px 0 6px;display:block;width:100%}
+.pos-row{
+  display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);
+  padding-top:8px;border-top:1px solid var(--line);margin-bottom:9px;
+}
+.pos-row b{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums}
+.btns{display:flex;gap:8px}
+.btn{
+  flex:1;border:0;border-radius:9px;padding:9px 0;font-size:13px;font-weight:500;
+  font-family:inherit;cursor:pointer;transition:opacity .12s;
+}
+.btn:active{opacity:.7}
+.btn:disabled{opacity:.32;cursor:not-allowed}
+.btn-buy{background:rgba(246,70,93,.15);color:#ff7a8a}
+.btn-sell{background:rgba(14,203,129,.15);color:#3ddc9a}
+.btn-primary{background:var(--gold);color:#0b0e11}
+.btn-ghost{background:var(--panel-3);color:var(--text)}
+
+/* ============ TABS ============ */
+.tabs{
+  position:fixed;bottom:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:480px;background:rgba(22,26,31,.96);backdrop-filter:blur(12px);
+  border-top:1px solid var(--line);display:flex;z-index:40;padding-bottom:env(safe-area-inset-bottom);
+}
+.tab{
+  flex:1;background:transparent;border:0;color:var(--dim);font-family:inherit;
+  font-size:10.5px;padding:9px 0 11px;cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;gap:3px;font-weight:500;
+}
+.tab .ti{font-size:17px;line-height:1}
+.tab.active{color:var(--gold)}
+
+/* ============ SHEET ============ */
+.mask{
+  position:fixed;inset:0;background:rgba(0,0,0,.66);z-index:60;
+  display:flex;align-items:flex-end;justify-content:center;
+}
+.mask[hidden]{display:none}
+.sheet{
+  width:100%;max-width:480px;background:var(--panel-2);
+  border-radius:18px 18px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));
+  animation:up .22s ease-out;
+}
+@keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.sheet-title{font-size:15px;font-weight:600;margin-bottom:3px}
+.sheet-desc{font-size:11.5px;color:var(--muted);margin-bottom:14px}
+.qty-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.qty-btn{
+  background:var(--panel-3);border:1px solid var(--line);color:var(--text);
+  border-radius:10px;padding:11px 0;font-family:inherit;font-size:12.5px;
+  cursor:pointer;font-weight:500;
+}
+.qty-btn:active{background:var(--gold);color:#0b0e11}
+.qty-btn small{display:block;font-size:10px;color:var(--muted);font-weight:400;margin-top:2px}
+.amt-row{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--panel);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12.5px;
+}
+.amt-row span{color:var(--muted)}
+.amt-row b{font-variant-numeric:tabular-nums;font-weight:600}
+
+/* ============ LOTTERY ============ */
+.lt-hero{
+  background:linear-gradient(135deg,#2a1f0e,#1a1610);border:1px solid rgba(252,213,53,.25);
+  border-radius:14px;padding:18px;text-align:center;margin-bottom:12px;
+}
+.lt-hero .big{font-size:32px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums;line-height:1.2}
+.lt-hero .sub{font-size:11.5px;color:var(--muted);margin-top:3px}
+
+/* ============ 住房 ============ */
+.hm-hero{
+  background:linear-gradient(135deg,rgba(252,213,53,.10),rgba(252,213,53,.02));
+  border:1px solid rgba(252,213,53,.28);border-radius:14px;padding:14px;margin-bottom:12px;
+}
+.hm-hero .top{display:flex;align-items:center;gap:10px}
+.hm-hero .ico{font-size:26px;line-height:1}
+.hm-hero .nm{font-size:15px;font-weight:600}
+.hm-hero .sb{font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+.hm-hero .cost{
+  margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);
+  font-size:11px;color:var(--muted);display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+}
+.hm-hero .cost b{color:var(--gold);font-size:16px;font-variant-numeric:tabular-nums}
+.hm-idx{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+.hm-idx .row{display:flex;justify-content:space-between;align-items:baseline}
+.hm-idx .k{font-size:11.5px;color:var(--muted)}
+.hm-idx .v{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.hm-list{display:flex;flex-direction:column;gap:10px}
+.hm-item{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.hm-item.cur{border-color:var(--gold);background:rgba(252,213,53,.07)}
+.hm-item .hd{display:flex;align-items:center;gap:9px}
+.hm-item .ico{font-size:22px;line-height:1}
+.hm-item .nm{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px}
+.hm-item .ds{font-size:10px;color:var(--dim);margin-top:2px}
+.hm-item .num{margin-left:auto;text-align:right}
+.hm-item .num .p{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.hm-item .num .r{font-size:9.5px;color:var(--muted);margin-top:2px}
+.hm-btns{display:grid;gap:6px;margin-top:10px}
+.hm-btns .btn{padding:9px 2px;font-size:11.5px}
+.hm-btns .btn small{display:block;font-size:9px;opacity:.62;font-weight:400;margin-top:2px}
+
+/* ---- 面值选择 ---- */
+.tk-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.tk-opt{
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:10px 5px;text-align:center;cursor:pointer;
+  transition:border-color .15s ease,background .15s ease;
+}
+.tk-opt:active{opacity:.75}
+.tk-opt.active{border-color:var(--gold);background:rgba(252,213,53,.09)}
+.tk-opt .n{font-size:12px;font-weight:600}
+.tk-opt.active .n{color:var(--gold)}
+.tk-opt .p{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:3px}
+.tk-opt .j{font-size:9.5px;color:var(--muted);margin-top:3px}
+.tk-opt .c{font-size:9px;color:var(--dim);margin-top:1px}
+.lt-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.lt-stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 8px;text-align:center}
+.lt-stat .k{font-size:10px;color:var(--muted)}
+.lt-stat .v{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:3px}
+.lt-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.lt-actions .btn small{display:block;font-size:10px;opacity:.6;font-weight:400;margin-top:1px}
+.pending-box{
+  background:rgba(252,213,53,.07);border:1px dashed rgba(252,213,53,.3);
+  border-radius:10px;padding:10px 12px;font-size:12px;color:var(--muted);text-align:center;margin-bottom:10px;
+}
+.pending-box b{color:var(--gold);font-size:15px}
+
+/* ---- 彩票店现货条（类名沿用 quota-*，仅样式） ---- */
+.quota-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+.quota-top{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--muted);margin-bottom:8px}
+.quota-top b{color:var(--gold);font-size:14px;font-variant-numeric:tabular-nums}
+.quota-bar{height:7px;background:var(--panel-3);border-radius:4px;overflow:hidden}
+.quota-fill{height:100%;background:var(--gold);border-radius:4px;transition:width .3s ease}
+.quota-note{font-size:10.5px;color:var(--dim);margin-top:7px;line-height:1.5}
+
+/* ---- 最近刮奖流 ---- */
+.feed{display:flex;gap:5px;overflow-x:auto;padding:2px 0 6px}
+.feed .f{
+  flex:0 0 auto;min-width:46px;height:34px;border-radius:7px;display:grid;place-items:center;
+  font-size:11px;font-weight:600;background:var(--panel-3);color:var(--dim);padding:0 7px;
+}
+.feed .f.w{background:rgba(252,213,53,.14);color:var(--gold);border:1px solid rgba(252,213,53,.35)}
+.feed .f.b{background:var(--gold);color:#0b0e11;border:1px solid var(--gold)}
+
+/* ---- 刮刮乐浮层 ---- */
+.scratch-mask{align-items:center;justify-content:center;padding:14px}
+.scratch-panel{
+  width:100%;max-width:430px;background:var(--panel-2);
+  border:1px solid rgba(252,213,53,.28);border-radius:18px;
+  padding:16px;max-height:94vh;overflow-y:auto;animation:up .22s ease-out;
+}
+.sp-head{text-align:center;margin-bottom:11px}
+.sp-title{font-size:15px;font-weight:600;color:var(--gold);letter-spacing:4px}
+.sp-sub{font-size:11.5px;color:var(--muted);margin-top:3px}
+.sp-stage{min-height:64px}
+
+/* ---- 批次进度 ---- */
+.sp-batch{display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:10px;font-size:11.5px;color:var(--muted)}
+.sp-batch .pn{color:var(--gold);font-weight:700;font-variant-numeric:tabular-nums;font-size:13px}
+.sp-batch .bar{flex:0 0 96px;height:4px;background:var(--panel-3);border-radius:2px;overflow:hidden}
+.sp-batch .bar i{display:block;height:100%;background:var(--gold);border-radius:2px;transition:width .25s ease}
+
+/* ---- 单张刮卡（真实刮开） ---- */
+.sc-card{
+  position:relative;border-radius:14px;overflow:hidden;height:192px;
+  background:linear-gradient(150deg,#3a2d0c,#241c0b 55%,#191512);
+  border:1px solid rgba(252,213,53,.42);
+  user-select:none;-webkit-user-select:none;touch-action:none;cursor:crosshair;
+  box-shadow:inset 0 0 46px rgba(252,213,53,.07);
+}
+.sc-card.pop{animation:tkpop .45s ease-out}
+.sc-card.jackpot{box-shadow:0 0 0 2px var(--gold),0 0 36px rgba(252,213,53,.6)}
+.sc-face{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:5px;padding:14px;text-align:center;
+}
+.sc-brand{font-size:9.5px;letter-spacing:3px;color:rgba(252,213,53,.6)}
+.sc-prize{font-size:38px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-1.5px}
+.sc-prize.win{color:var(--gold);text-shadow:0 0 24px rgba(252,213,53,.55)}
+.sc-prize.jackpot{
+  background:linear-gradient(180deg,#fff8d4,#fcd535 42%,#c9990a);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 16px rgba(252,213,53,.65));
+}
+.sc-prize.lose{color:#525a66;font-size:23px;font-weight:600;letter-spacing:0}
+.sc-note{font-size:10px;color:rgba(252,213,53,.55);letter-spacing:.5px}
+.sc-coat{
+  position:absolute;inset:0;width:100%;height:100%;display:block;
+  touch-action:none;transition:opacity .32s ease;
+}
+.sc-coat.gone{opacity:0;pointer-events:none}
+/* 换下一张时用它把涂层「瞬间」拉回不透明，不走那 0.32s 渐显 —— 
+   否则渐显期间底下的奖面文字会透出来，等于提前剧透下一张中没中 */
+.sc-coat.snap{transition:none}
+.sc-flash{
+  position:absolute;inset:0;pointer-events:none;opacity:0;
+  background:radial-gradient(circle at 50% 50%,rgba(255,246,201,.75),rgba(252,213,53,0) 68%);
+}
+.sc-flash.on{animation:scflash .6s ease-out}
+@keyframes scflash{0%{opacity:0}30%{opacity:1}100%{opacity:0}}
+
+/* ---- 一键刮开：网格翻牌 ---- */
+.sp-grid{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.tk{width:46px;height:62px;perspective:520px;flex:0 0 auto}
+.tk-inner{
+  position:relative;width:100%;height:100%;transform-style:preserve-3d;
+  transition:transform .34s cubic-bezier(.34,1.4,.64,1);
+}
+.tk.revealed .tk-inner{transform:rotateY(180deg)}
+.tk-face{
+  position:absolute;inset:0;border-radius:8px;display:grid;place-items:center;
+  backface-visibility:hidden;-webkit-backface-visibility:hidden;
+  font-size:11px;font-weight:600;overflow:hidden;
+}
+.tk-conceal{background:#2b2410;border:1px solid rgba(252,213,53,.4);color:rgba(252,213,53,.6);font-size:17px}
+.tk-reveal{transform:rotateY(180deg);background:var(--panel-3);border:1px solid var(--line);color:var(--dim)}
+.tk-reveal.win{background:#3a2e0c;border-color:var(--gold);color:var(--gold);font-size:12px}
+.tk.win{animation:tkpop .4s ease-out}
+@keyframes tkpop{0%{transform:scale(1)}42%{transform:scale(1.22)}100%{transform:scale(1)}}
+.sp-result{
+  margin-top:14px;padding:13px;border-radius:12px;text-align:center;
+  background:var(--panel);border:1px solid var(--line);
+  font-size:12.5px;color:var(--muted);min-height:48px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  opacity:0;transition:opacity .3s ease;
+}
+.sp-result.show{opacity:1}
+.sp-result .big{font-size:19px;font-weight:600;color:var(--gold);font-variant-numeric:tabular-nums}
+.sp-actions{display:flex;gap:9px;margin-top:12px}
+.sp-actions .btn{flex:1;padding:13px 0;font-size:13.5px}
+
+/* ============ LOG ============ */
+.log-item{
+  display:flex;gap:9px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12px;
+}
+.log-item:last-child{border-bottom:0}
+.log-day{color:var(--dim);flex-shrink:0;font-variant-numeric:tabular-nums;font-size:11px;padding-top:1px;min-width:42px}
+.log-txt{color:var(--muted);line-height:1.45}
+.log-txt.good{color:#3ddc9a}
+.log-txt.bad{color:#ff7a8a}
+.log-txt.gold{color:var(--gold)}
+
+/* ============ DEBT MODE ============ */
+.debt-view{padding:16px 14px 100px}
+.debt-alert{
+  background:rgba(246,70,93,.1);border:1px solid rgba(246,70,93,.35);
+  border-radius:14px;padding:18px;text-align:center;margin-bottom:14px;
+  animation:pulse 2s infinite;
+}
+@keyframes pulse{0%,100%{border-color:rgba(246,70,93,.35)}50%{border-color:rgba(246,70,93,.8)}}
+.debt-alert .h{font-size:13px;color:#ff7a8a;font-weight:600;letter-spacing:1px}
+.debt-alert .big{font-size:30px;font-weight:700;color:#f6465d;font-variant-numeric:tabular-nums;margin:7px 0 3px}
+.debt-alert .s{font-size:11.5px;color:var(--muted)}
+.round-dots{display:flex;gap:6px;justify-content:center;margin:14px 0}
+.rd{width:26px;height:6px;border-radius:3px;background:var(--panel-3)}
+.rd.used{background:var(--red)}
+.debt-cash{
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:14px;text-align:center;margin-bottom:12px;
+}
+.debt-cash .k{font-size:11px;color:var(--muted)}
+.debt-cash .v{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--gold)}
+.debt-act{display:flex;flex-direction:column;gap:9px}
+.debt-act .btn{padding:13px 0;font-size:14px}
+.hint{font-size:11px;color:var(--dim);text-align:center;margin-top:10px;line-height:1.6}
+
+/* ============ OVERLAY ============ */
+/* 全屏遮罩：钉在视口上、铺满整个屏幕，桌面端也能完全盖住后面的游戏。
+   历史坑：这里原来同时写了 inset:0 + max-width:480px + margin:0 auto + left:50% + translateX(-50%)。
+   绝对定位下 auto 外边距会吃掉剩余空间，于是「left:50%」和「margin auto」各居中一次 ——
+   桌面端宽视口下整块被推到右半边，左边露出游戏界面；手机端因为视口不足 480px、
+   剩余空间为负，auto 外边距退化为 0，反而看起来正常。所以别再叠这两种居中。 */
+.overlay{
+  position:fixed;top:0;left:0;right:0;bottom:0;z-index:80;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;
+  padding:32px 26px;text-align:center;overflow-y:auto;
+}
+/* 「安全居中」：上下两个零高伪元素各吃掉一半剩余空间。
+   内容放得下时纵向居中，放不下时（矮窗口）自动从顶部排起，且能滚动 —— 
+   直接用 justify-content:center + overflow 会让超出部分被裁掉且滚不到。 */
+.overlay::before,.overlay::after{content:'';flex:0 0 auto;height:0}
+.overlay::before{margin-top:auto}
+.overlay::after{margin-bottom:auto}
+.overlay[hidden]{display:none}
+.ov-title{font-size:24px;font-weight:700;letter-spacing:-.5px;margin-bottom:8px}
+.ov-sub{font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:22px;max-width:340px}
+.ov-rules{
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  padding:16px;text-align:left;font-size:12px;color:var(--muted);line-height:1.9;margin-bottom:22px;width:100%;max-width:360px;
+}
+.ov-rules b{color:var(--text)}
+.ov-rules .dot{color:var(--gold);margin-right:6px}
+.ov-btn{
+  background:var(--gold);color:#0b0e11;border:0;border-radius:12px;
+  padding:15px 0;font-size:15px;font-weight:600;font-family:inherit;
+  width:100%;max-width:360px;cursor:pointer;
+}
+.ov-btn.sec{background:var(--panel-3);color:var(--text);margin-top:9px}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-width:360px;margin-bottom:20px}
+.stat-grid .s{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px}
+.stat-grid .k{font-size:10.5px;color:var(--muted)}
+.stat-grid .v{font-size:17px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
+
+/* ---- 结算评级徽章 ---- */
+.grade{
+  width:104px;height:104px;border-radius:50%;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;margin:4px 0 18px;flex:0 0 auto;
+  border:2px solid var(--line);background:var(--panel);
+  animation:gpop .4s cubic-bezier(.2,1.4,.4,1);
+}
+@keyframes gpop{from{transform:scale(.55);opacity:0}to{transform:scale(1);opacity:1}}
+.grade .gl{font-size:44px;font-weight:700;line-height:1;letter-spacing:-2px}
+.grade .gt{font-size:10.5px;color:var(--muted);margin-top:5px}
+.grade.g-S{border-color:var(--gold);background:rgba(252,213,53,.12);box-shadow:0 0 26px rgba(252,213,53,.28)}
+.grade.g-S .gl{color:var(--gold)}
+.grade.g-A{border-color:var(--up);background:rgba(246,70,93,.11)}
+.grade.g-A .gl{color:var(--up)}
+.grade.g-B{border-color:var(--blue);background:rgba(47,128,237,.11)}
+.grade.g-B .gl{color:#5fa3f5}
+.grade.g-C .gl{color:var(--muted)}
+.grade.g-D{border-color:var(--line)}
+.grade.g-D .gl{color:var(--dim)}
+
+/* ---- 待决事件浮层 ---- */
+.ev-overlay{justify-content:center;padding:20px 16px}
+.ev-card{
+  width:100%;max-width:400px;background:var(--panel-2);
+  border:1px solid rgba(252,213,53,.30);border-radius:18px;padding:20px 16px;
+  text-align:center;animation:gpop .3s cubic-bezier(.2,1.3,.4,1);
+}
+.ev-ic{font-size:36px;line-height:1}
+.ev-tt{font-size:17px;font-weight:600;margin:8px 0 8px;color:var(--gold)}
+.ev-tx{font-size:12.5px;color:var(--muted);line-height:1.75;margin-bottom:16px;text-align:left}
+.ev-opts{display:flex;flex-direction:column;gap:9px}
+.ev-opt{
+  background:var(--panel-3);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;text-align:left;font-family:inherit;color:var(--text);
+  cursor:pointer;transition:border-color .14s ease,background .14s ease;
+}
+.ev-opt:active{background:rgba(252,213,53,.14);border-color:var(--gold)}
+.ev-opt .ol{display:block;font-size:13.5px;font-weight:600}
+.ev-opt .os{display:block;font-size:10.5px;color:var(--muted);margin-top:4px;line-height:1.5}
+.ev-note{font-size:10.5px;color:var(--dim);margin-top:14px}
+
+/* ---- 杠杆 ---- */
+.btn-lev{background:rgba(47,128,237,.16);color:#5fa3f5}
+.lev-seg{display:flex;gap:7px;margin-bottom:9px}
+.lev-seg .seg{
+  flex:1;background:var(--panel-3);border:1px solid var(--line);color:var(--muted);
+  border-radius:10px;padding:10px 0;font-family:inherit;font-size:12.5px;
+  font-weight:500;cursor:pointer;
+}
+.lev-seg .seg.on{background:rgba(252,213,53,.14);border-color:var(--gold);color:var(--gold)}
+.lev-seg .seg.on.up{background:rgba(246,70,93,.16);border-color:var(--up);color:#ff8f9c}
+.lev-seg .seg.on.down{background:rgba(14,203,129,.16);border-color:var(--down);color:#4ce0a5}
+.lev-row{
+  display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  margin-top:9px;padding-top:9px;border-top:1px dashed var(--line);
+  font-size:10.5px;color:var(--muted);
+}
+.lev-row .lv{
+  font-weight:700;font-size:10.5px;padding:2px 7px;border-radius:5px;
+  background:rgba(47,128,237,.18);color:#5fa3f5;
+}
+.lev-row.s .lv{background:rgba(252,213,53,.18);color:var(--gold)}
+.lev-row .lp{font-weight:600;font-variant-numeric:tabular-nums}
+.lev-row .lq{color:var(--dim)}
+.lev-row .lclose{
+  margin-left:auto;background:var(--panel-3);border:1px solid var(--line);
+  color:var(--text);border-radius:7px;padding:5px 11px;font-family:inherit;
+  font-size:11px;cursor:pointer;
+}
+.lev-row .lclose:active{background:var(--gold);color:#0b0e11}
+/* 杠杆说明卡：没人天生懂"保证金 / 名义市值 / 爆仓"这三个词，
+   所以先用一段人话把整件事讲完，再给数字。 */
+.lev-expl{
+  background:rgba(47,128,237,.10);border:1px solid rgba(47,128,237,.30);
+  border-radius:11px;padding:10px 12px;margin:2px 0 12px;
+}
+.lev-expl .le-t{font-size:10.5px;font-weight:700;color:#5fa3f5;margin-bottom:5px;letter-spacing:.5px}
+.lev-expl .le-b{font-size:11.5px;line-height:1.8;color:var(--text)}
+.lev-expl .le-b b{color:#7fb9ff;font-weight:600;font-variant-numeric:tabular-nums}
+.lev-tip{font-size:10.5px;line-height:1.7;color:var(--dim);margin:-2px 0 12px;padding:0 2px}
+
+/* ============ TOAST ============ */
+#toasts{
+  position:fixed;top:76px;left:50%;transform:translateX(-50%);
+  z-index:90;display:flex;flex-direction:column;gap:7px;pointer-events:none;
+  width:100%;max-width:400px;padding:0 14px;align-items:center;
+}
+.toast{
+  background:rgba(30,35,41,.97);border:1px solid var(--line);border-radius:11px;
+  padding:9px 16px;font-size:12.5px;font-weight:500;box-shadow:0 6px 24px rgba(0,0,0,.5);
+  animation:tin .28s ease-out;max-width:100%;text-align:center;
+}
+.toast.gold{background:rgba(58,46,12,.97);border-color:var(--gold);color:var(--gold);font-size:14px}
+.toast.bad{background:rgba(58,20,24,.97);border-color:var(--up);color:#ff8f9c}
+.toast.good{background:rgba(12,48,35,.97);border-color:var(--down);color:#4ce0a5}
+@keyframes tin{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+.toast.out{animation:tout .3s ease-in forwards}
+@keyframes tout{to{opacity:0;transform:translateY(-12px)}}
+
+.sec-title{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.6px;margin:16px 0 9px;padding-left:2px}
+.sec-title:first-child{margin-top:2px}
+.more-item{
+  display:flex;justify-content:space-between;align-items:center;
+  background:var(--panel);border:1px solid var(--line);border-radius:11px;
+  padding:13px 14px;margin-bottom:8px;font-size:13px;
+}
+.more-item .k{color:var(--muted);font-size:12px}
+.more-item b{font-variant-numeric:tabular-nums;font-weight:500}
+.empty{text-align:center;color:var(--dim);font-size:12px;padding:40px 0}
+
+/* ---- 本局进度条 ---- */
+.run-prog{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:8px}
+.run-prog .rp-top{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--muted)}
+.run-prog .rp-top b{color:var(--gold);font-variant-numeric:tabular-nums}
+.run-prog .rp-bar{height:8px;background:var(--panel-3);border-radius:4px;overflow:hidden;margin:9px 0 8px}
+.run-prog .rp-bar i{display:block;height:100%;background:var(--gold);border-radius:4px;transition:width .3s ease}
+.run-prog .rp-note{font-size:10.5px;color:var(--dim);line-height:1.6}
+
+/* ---- 成就墙 ---- */
+.ach-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
+.ach{
+  background:var(--panel);border:1px solid var(--line);border-radius:11px;
+  padding:10px;text-align:center;opacity:.42;
+}
+.ach.got{opacity:1;border-color:rgba(252,213,53,.42);background:rgba(252,213,53,.07)}
+.ach .ai{font-size:19px;line-height:1;display:block;filter:grayscale(1)}
+.ach.got .ai{filter:none}
+.ach .an{display:block;font-size:11.5px;font-weight:600;margin-top:5px}
+.ach.got .an{color:var(--gold)}
+.ach .ad{display:block;font-size:9.5px;color:var(--dim);margin-top:3px;line-height:1.45}
+
+/* ---- 工作 / 经营 ---- */
+.wsum{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:8px}
+.wsum .r{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);line-height:2}
+.wsum .r b{color:var(--text);font-variant-numeric:tabular-nums}
+.wsum .net{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-top:8px;padding-top:9px;border-top:1px dashed var(--line)}
+.wsum .net b{font-size:15px;font-variant-numeric:tabular-nums}
+
+.wcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:8px}
+.wcard.hi{border-color:rgba(252,213,53,.45);background:rgba(252,213,53,.05)}
+.wcard .wt{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.wcard .wn{font-size:13.5px;font-weight:600}
+.wcard .wic{font-size:17px;margin-right:6px}
+.wcard .wp{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--up);white-space:nowrap}
+.wcard .ws{font-size:10.5px;color:var(--dim);margin-top:6px;line-height:1.7}
+.wcard .ws b{color:var(--text)}
+
+.fat{margin-top:9px}
+.fat .ft{display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-bottom:4px}
+.fat .fb{height:6px;background:var(--panel-3);border-radius:3px;overflow:hidden}
+.fat .fb i{display:block;height:100%;border-radius:3px;background:var(--gold);transition:width .3s}
+.fat.hot .fb i{background:var(--up)}
+
+.wrow{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 12px;margin-bottom:7px}
+.wrow .wi{font-size:19px;flex:0 0 auto;width:24px;text-align:center;line-height:1}
+.wrow .wb{flex:1 1 auto;min-width:0}
+.wrow .wnm{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.wrow .wd{font-size:10.5px;color:var(--dim);margin-top:3px;line-height:1.6}
+.wrow .wa{flex:0 0 auto}
+.wrow.lock{opacity:.44}
+.wrow.on{border-color:rgba(252,213,53,.45);background:rgba(252,213,53,.06)}
+.mini{padding:7px 11px;font-size:11.5px;border-radius:8px;border:1px solid var(--line);background:var(--panel-3);color:var(--text);cursor:pointer;white-space:nowrap;font-family:inherit}
+.mini:disabled{opacity:.38;cursor:default}
+.mini.go{background:var(--gold);color:#0b0e11;border-color:transparent;font-weight:700}
+.mini.dg{color:var(--up);border-color:rgba(246,70,93,.38)}
+.pill{display:inline-block;font-size:9.5px;padding:1px 6px;border-radius:5px;background:var(--panel-3);color:var(--muted);white-space:nowrap}
+.pill.g{background:rgba(252,213,53,.16);color:var(--gold)}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="hud">
+    <div class="hud-top">
+      <div>
+        <div class="nw-label">总资产 · <b class="rank-tag" id="rankVal">一穷二白</b></div>
+        <div class="nw-value"><span class="cur">¥</span><span id="nwVal">15,000.00</span></div>
+        <div class="nw-delta flat" id="nwDelta">+0.00%</div>
+      </div>
+      <div class="run-badge" id="runBadge"><span class="rd-dot"></span><span id="runBadgeTxt">1x</span></div>
+    </div>
+    <div class="hud-sub">
+      <span>第 <b id="dayVal">0</b> 天</span>
+      <span>现金 <b id="cashVal">¥15,000</b></span>
+      <span>持仓 <b id="holdVal">¥0</b></span>
+      <span>日入 <b id="incomeVal">¥0</b></span>
+      <span>日耗 <b id="costVal">¥20</b></span>
+    </div>
+  </header>
+
+  <main class="view" id="view-market"></main>
+  <main class="view" id="view-work" hidden></main>
+  <main class="view" id="view-home" hidden></main>
+  <main class="view" id="view-lottery" hidden></main>
+  <main class="view" id="view-log" hidden></main>
+  <main class="view" id="view-more" hidden></main>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-v="market"><span class="ti">◈</span>市场</button>
+    <button class="tab" data-v="work"><span class="ti">💼</span>工作</button>
+    <button class="tab" data-v="home"><span class="ti">🏠</span>住房</button>
+    <button class="tab" data-v="lottery"><span class="ti">🎟</span>彩票</button>
+    <button class="tab" data-v="log"><span class="ti">☰</span>记录</button>
+    <button class="tab" data-v="more"><span class="ti">⚙</span>更多</button>
+  </nav>
+</div>
+
+<!-- 固定速度条：常驻底部，任何页面/任何滚动位置都能直接调 -->
+<div class="speed-bar" id="speedBar">
+  <span class="sb-label">流速</span>
+  <button data-sp="0">暂停</button>
+  <button data-sp="0.5">0.5x</button>
+  <button data-sp="1">1x</button>
+  <button data-sp="2">2x</button>
+  <button data-sp="4">4x</button>
+</div>
+
+<div class="mask" id="sheetMask" hidden><div class="sheet" id="sheet"></div></div>
+
+<div class="mask scratch-mask" id="scratchMask" hidden>
+  <div class="scratch-panel">
+    <div class="sp-head">
+      <div class="sp-title">刮 刮 乐</div>
+      <div class="sp-sub" id="spSub"></div>
+    </div>
+    <div class="sp-batch" id="spBatch" hidden>
+      <span>第 <b class="pn" id="spIdx">1</b> / <b class="pn" id="spTotal">1</b> 张</span>
+      <span class="bar"><i id="spBar" style="width:0%"></i></span>
+      <span>已中 <b class="pn" id="spWon">¥0</b></span>
+    </div>
+    <div class="sp-stage" id="spStage">
+      <div class="sc-card" id="scCard">
+        <div class="sc-face">
+          <div class="sc-brand" id="scBrand">幸运星</div>
+          <div class="sc-prize" id="scPrize">？</div>
+          <div class="sc-note" id="scNote"></div>
+        </div>
+        <canvas class="sc-coat" id="scCoat"></canvas>
+        <div class="sc-flash" id="scFlash"></div>
+      </div>
+      <div class="sp-grid" id="spGrid" hidden></div>
+    </div>
+    <div class="sp-result" id="spResult"></div>
+    <div class="sp-actions">
+      <button class="btn btn-ghost" id="spClose">收手</button>
+      <button class="btn btn-primary" id="spAll">一键刮开全部</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<div class="overlay" id="ovIntro">
+  <div class="ov-title">财富自由之路</div>
+  <div class="ov-sub">一款虚拟投资模拟器<br>所有货币均为游戏内虚拟数字，不涉及任何真实资金</div>
+  <div class="ov-rules">
+    <div><span class="dot">◆</span>起始资金 <b>¥15,000</b>（虚拟），<b>无尽模式</b> —— 想玩多久玩多久</div>
+    <div><span class="dot">◆</span>价格围绕"合理价"上下波动，卡片上的 <b>高估 / 低估</b> 就是提醒你贵了还是便宜了</div>
+    <div><span class="dot">◆</span>时间自动流逝，每天扣除 <b>生活费 + 房钱</b>，躺着不动会被吃穷</div>
+    <div><span class="dot">◆</span>去「<b>工作</b>」页上岗：工资自动到账、工龄到了自动升职；也能<b>开店</b>换一份稳定日收益</div>
+    <div><span class="dot">◆</span>投资债券 / 基金 / 股票 / 加密币 / 彩票，可上 <b>2~5 倍杠杆做多做空</b></div>
+    <div><span class="dot">◆</span>路上会不停弹出 <b>抉择</b>：内幕消息、挤兑、涨租… 必须拍板</div>
+    <div><span class="dot">◆</span>净资产跌破 <b>¥6,000</b> 会自动 <b>节衣缩食</b>（日耗 ×0.35），缓过来自动恢复</div>
+    <div><span class="dot">◆</span>净资产摸到 <b>¥1 亿</b> = 财富自由，可开启下一世代，也可以继续玩</div>
+    <div><span class="dot">◆</span>资产归零 → <b>债务模式</b>，6 回合内翻盘，失败即破产</div>
+  </div>
+  <button class="ov-btn" id="btnStart">开始创业</button>
+</div>
+
+<div class="overlay" id="ovOver" hidden>
+  <div class="ov-title" id="ovOverTitle">结算</div>
+  <div class="grade g-D" id="ovGrade"><div class="gl">D</div><div class="gt">原地踏步</div></div>
+  <div class="ov-sub" id="ovOverSub"></div>
+  <div class="stat-grid" id="ovOverStats"></div>
+  <button class="ov-btn" id="btnReborn">再来一局</button>
+  <button class="ov-btn sec" id="btnKeepGoing" hidden>继续玩下去</button>
+  <button class="ov-btn sec" id="btnOverMore">查看记录</button>
+</div>
+
+<!-- 待决事件：触发即暂停，不选完不能继续 -->
+<div class="overlay ev-overlay" id="ovEvent" hidden>
+  <div class="ev-card">
+    <div class="ev-ic" id="evIcon">📩</div>
+    <div class="ev-tt" id="evTitle"></div>
+    <div class="ev-tx" id="evText"></div>
+    <div class="ev-opts" id="evOpts"></div>
+    <div class="ev-note">时间已暂停 · 必须做出选择才能继续</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   财富自由之路 · 虚拟投资模拟器
+   单文件 H5 / 无依赖 / 移动端优先
+   数据层已抽象（Storage），未来可平滑接入云端存档与排行榜
+   ===================================================================== */
+
+/* ---------------- 资产配置（每 tick = 1 个交易日） ----------------
+   价格模型 = 「内在价值线 + 对数均值回归（Ornstein-Uhlenbeck）」：
+     trend  —— 合理价的斜率：第 day 天的合理价 = base × (1 + trend × day)
+               也就是 1000 天涨到 base × (1 + trend×1000)
+     kappa  —— 每天把"偏离合理价"的那部分收缩掉多少（在对数空间里）
+     vol    —— 每日随机冲击强度
+
+   【为什么必须换成这个】旧版是 p × (1 + drift + vol×噪声) —— 纯几何随机游走、没有锚。
+   这种过程在 1000 天尺度上**必然指数爆炸**：标定实测 债券 ×33 / 基金 ×62 / 股票 ×97，
+   开局 ¥1 万梭哈不卖就能摸到通关线，"最优解 = 什么都不做"。
+   加上回归力之后：
+     · 1000 天的倍数被钉死在 1 + trend×1000：
+         债券 ×1.6 ／ 基金 ×2.3 ／ 股票 ×3.2 ／ 加密币 ×5.0
+     · 短期该波动还是波动（稳态偏离的 1σ ≈ 2% / 7% / 15% / 61%）
+     · 「现价 ÷ 合理价」第一次成了可读信号 —— 低估该买、高估该跑，择时终于是个决策
+
+   偏离的半衰期 = ln2 / kappa 天； 稳态波幅 = vol / √(1 − e^(−2κ))。
+
+   另外两条独立的死亡路径（与回归力无关，照旧生效）：
+     floor   —— 绝对硬底：价格不低于 base × floor（越稳的资产底越硬）
+     crashP  —— 每个交易日发生「崩盘」的概率（单日暴跌，跌出来的低估是抄底机会）
+     danger  —— 跌破（合理价 × danger）即进入「濒危」区，每天有 delistP 概率退市归零
+   归零是真实的破产路径：价格打到 0 → 持仓作废 → 只剩现金 → 被生活费磨光 → enterDebt。 */
+const ASSETS = [
+  { id:'bond',   name:'稳健债券', icon:'🏛', cls:'bond', tag:'低风险', tcls:'t1',
+    /* ★ trend 0.0018 → 0.0028（用户反馈："稳定债券也不稳定了，亏的概率非常大。
+       我觉得这个应该让他勉强糊口，想攒钱有点难，但是租房住饿不死你"）
+
+       0.0018 时债券是全四类里**最危险**的：全仓躺平 100% 破产、死亡中位 1407 天。
+       原因不是波动，是它涨得太慢 —— 日耗每天硬扣，而卖出的份数是
+       ∫日耗/价格 dt，价格涨得越慢、要卖的份数越多；债券 1000 天才 ×2.8，
+       份数根本不够卖。**低风险资产反而最容易死**，这是定位上的自相矛盾。
+
+       标定结果（全仓躺平 · 事件开 · 150 次）：
+         trend     1000天价   1500天破产/净资产中位    2500天破产/死亡中位
+         0.0018    ×2.8      100% / ¥0               100% / 1407 天
+         0.0024    ×3.4        0% / ¥6,189           100% / 1761 天
+         0.0028    ×3.8        0% / ¥12,274          100% / 2050 天
+         0.0030    ×4.0        0% / ¥15,666          100% / 2195 天   ← 取这档
+       取 0.0030：1500 天净资产刚好回到本金线（¥15,666 vs ¥15,000）
+       —— 正是"勉强糊口、攒钱难"：活得下去、日子不紧不慢，但发不了财。
+
+       ⚠️ 别指望靠调 trend 做到"永远饿不死"，数学上做不到：
+       涨幅率 r(t) = trend/(1+trend·t) 随时间衰减，日耗却恒定/上涨，
+       于是 M'=M·r(t)−日耗 的平衡点 M*=日耗/r(t) 一直往上跑，M 永远追不上
+       → 必死（只是把时间轴拉长）。要真的不失血，只有两条路，
+       两条都不适合现在这版：
+         · 让价格变成指数复利 —— 那就是数值膨胀，用户最反感的东西；
+         · 给玩家一份"工资"（主动经营/打工）—— 那才是现实里的正解，
+           但属于已声明的延后项，等做到那一轮再一起配平。
+       所以现在只能取"死得够慢 + 中途靠择时/换仓自救"。
+
+       注意副作用：0.0030 离基金（0.0036 / 1000 天 ×4.6）只差一档，
+       不再是绝对洼地。它"低风险"的定位现在由 vol(0.0080，是基金的 29%)
+       和 floor(0.55) 承担 —— 也就是"**几乎不可能亏**"，
+       而不是"涨得最多"。这才是稳健资产在实战里的意义：
+       它不会让你半夜惊醒，但它也不会让你发财。 */
+    base:100, trend:0.0030, kappa:0.050, vol:0.0080, floor:0.55,
+    desc:'波动最小 · 稳到无聊' },
+  { id:'fund',   name:'混合基金', icon:'📊', cls:'fund', tag:'中低风险', tcls:'t2',
+    base:100, trend:0.0036, kappa:0.035, vol:0.0280, floor:0.15,
+    desc:'缓慢上行 · 回撤温和' },
+  { id:'stock',  name:'蓝筹股票', icon:'📈', cls:'stock', tag:'中风险', tcls:'t3',
+    base:100, trend:0.0050, kappa:0.025, vol:0.0420, floor:0.05,
+    crashP:0.006, crashMin:-0.22, crashMax:-0.07,
+    desc:'涨得动 · 也跌得动' },
+  { id:'crypto', name:'加密币',   icon:'🪙', cls:'crypto', tag:'高风险', tcls:'t4',
+    base:100, trend:0.0075, kappa:0.015, vol:0.1150, floor:0,
+    crashP:0.005, crashMin:-0.50, crashMax:-0.18,
+    danger:0.24, delistP:0.022,
+    desc:'能涨十倍 · 也能归零' },
+];
+const A_MAP = {};
+ASSETS.forEach(a => A_MAP[a.id] = a);
+
+/* 内在价值线：第 day 天的"合理价"。线性增长（不是复利）——
+   复利正是旧版爆炸的根源，线性才能让 1000 天后的价格停在可读的量级上。
+   整个价格系统、退市判定、"高估/低估"提示都以它为准。 */
+function innerValue(a, day) { return a.base * (1 + a.trend * Math.max(0, day | 0)); }
+// 现价相对合理价的偏离比例（+0.18 = 贵了 18%，−0.12 = 便宜了 12%）
+function priceDeviation(a) {
+  const t = innerValue(a, state.day);
+  return t > 0 ? state.prices[a.id] / t - 1 : 0;
+}
+
+/* 各资产「偏离合理价」的稳态标准差（对数尺度，≈ vol / √(1 − e^(−2κ))）。
+   用途：把四种资产的偏离归一化成**可横着比**的刻度 —— 债券天生只波动 ±2.6%，
+   加密币动着 ±67%，直接比百分比的话债券永远显示"合理"、加密永远"极端"。
+   写死而不实时推导，是为了让分档阈值稳定，不会随参数微调悄悄漂移。 */
+const DEV_SIG = { bond:0.026, fund:0.108, stock:0.190, crypto:0.670 };
+
+// 偏离分档：z = 偏离了几个标准差
+function devInfo(a) {
+  const d = priceDeviation(a);
+  const z = d / (DEV_SIG[a.id] || 0.20);
+  if (z >= 1.00) return { d, z, cls:'up',   word:'高估' };
+  if (z >= 0.35) return { d, z, cls:'up',   word:'偏高' };
+  if (z <= -1.00) return { d, z, cls:'down', word:'低估' };
+  if (z <= -0.35) return { d, z, cls:'down', word:'偏低' };
+  return { d, z, cls:'flat', word:'合理' };
+}
+
+/* ---------------- 住房（四档，合租只租不卖） ----------------
+   房价 = price × state.houseIdx（指数随独立的房产周期浮动）。
+   租金是每天的硬支出，直接并进「日耗」；买断后就只剩基础生活费。
+   数值取舍：房价 ÷ 日租金 ≈ 400 个交易日 —— 也就是住满一年多，
+   买房才开始比租房划算，否则租房更灵活。这个"回本周期"就是全部权衡的支点。 */
+const HOUSES = [
+  { id:'share', name:'合租单间', icon:'🛏', tier:0, rent:10,  price:0,      onlyRent:true,
+    desc:'一张床、一个衣柜，共用卫生间 —— 兜底底线' },
+  { id:'old',   name:'老旧小区', icon:'🏚', tier:1, rent:40,  price:16000,
+    desc:'没电梯、墙皮掉，但好歹是自己的' },
+  { id:'apt',   name:'公寓',     icon:'🏢', tier:2, rent:90,  price:36000,
+    desc:'电梯、物业、通勤方便' },
+  { id:'villa', name:'别墅',     icon:'🏡', tier:3, rent:260, price:104000,
+    desc:'带院子 —— 有钱人的生活方式' },
+];
+const H_MAP = {};
+HOUSES.forEach(h => H_MAP[h.id] = h);
+
+/* ---------------- 彩票 / 刮刮乐 ----------------
+   设计要点：即时刮开给足反馈，用「彩票店现货」掐住无限刷。
+   现货按面值分档、各自独立计数 —— 买光 ¥50 券不会影响 ¥10 券的库存。
+   每个交易日各档各自补货若干张，没刮掉的会一路攒到上限（封顶才停）。
+   于是玩家有两种节奏：天天来小刮一把，或隔几天攒一批一次刮个爽 —— 由他自己选。
+   面值对齐国内即开票常见档位（10 / 20 / 30 / 50），返奖率统一约 50%：
+   投入 100 元期望收回 50 元 —— 刮着爽，但长期一定亏。 */
+const JACKPOT_BASE = 100000;    // 头奖基数（¥10 面值对应 10 万，其余按面值倍数放大）
+const JACKPOT_P    = 0.000007;  // 头奖标称概率 ≈ 1 / 14.3 万
+const BIG_WIN_MULT = 20;        // 「大奖」及以上（面值的 20 倍）才值得飘字庆祝
+
+/* 四档票面：价位越高、头奖越大；限购按面值实价扣减，所以贵券一天能买到的张数自然更少 */
+const TICKETS = [
+  { id:'t10', name:'幸运星',   price:10, mult:1, cls:'' },
+  { id:'t20', name:'招财猫',   price:20, mult:2, cls:'' },
+  { id:'t30', name:'金元宝',   price:30, mult:3, cls:'' },
+  { id:'t50', name:'一刮千金', price:50, mult:5, cls:'gold' },
+];
+const T_MAP = {};
+TICKETS.forEach(t => { t.jackpot = JACKPOT_BASE * t.mult; T_MAP[t.id] = t; });
+
+/* 基础奖级（以 ¥10 面值为基准，其余面值按 mult 等比放大，故四档返奖率完全一致）
+   概率是「依次判定」的标称值，真实命中率由 oddsOf 按条件概率折算 */
+const PRIZE_BASE = [
+  { name:'回本', amount:10,  p:0.210,  cls:'' },       // 中回本金，最高频
+  { name:'小奖', amount:20,  p:0.078,  cls:'good' },
+  { name:'中奖', amount:50,  p:0.020,  cls:'good' },
+  { name:'大奖', amount:200, p:0.0031, cls:'gold' },
+];
+
+function prizesOf(t) {
+  return PRIZE_BASE
+    .map(b => ({ name:b.name, amount:b.amount * t.mult, p:b.p, cls:b.cls }))
+    .concat([{ name:'头奖', amount:t.jackpot, p:JACKPOT_P, cls:'jackpot' }]);
+}
+
+// 奖级是「依次判定 + break」，后面的奖要按条件概率折算，否则算出来的赔率会虚高
+function oddsOf(t) {
+  let remain = 1, ev = 0, hit = 0;
+  for (const p of prizesOf(t)) {
+    const eff = remain * p.p;
+    ev += eff * p.amount;
+    hit += eff;
+    remain *= (1 - p.p);
+  }
+  return { winRate: hit * 100, payback: ev / t.price * 100 };
+}
+const TICKET_ODDS = {}; TICKETS.forEach(t => { TICKET_ODDS[t.id] = oddsOf(t); });
+
+/* ---------------- 随机事件 ---------------- */
+const EVENTS = [
+  { t:'央行意外降息，债市走强',        id:'bond',   e: 0.018, tone:'good' },
+  { t:'企业债违约风波，债市承压',      id:'bond',   e:-0.015, tone:'bad' },
+  { t:'明星基金调仓成功，净值跳涨',    id:'fund',   e: 0.035, tone:'good' },
+  { t:'基金经理离职，基金遭赎回',      id:'fund',   e:-0.030, tone:'bad' },
+  { t:'科技财报超预期，蓝筹普涨',      id:'stock',  e: 0.055, tone:'good' },
+  { t:'监管重拳出击，股市跳水',        id:'stock',  e:-0.060, tone:'bad' },
+  { t:'机构巨鲸大举买入，币价飙升',    id:'crypto', e: 0.160, tone:'good' },
+  { t:'交易所暴雷传闻，币圈恐慌',      id:'crypto', e:-0.190, tone:'bad' },
+  { t:'全球流动性宽松，风险资产普涨',  id:null,     e: 0.045, tone:'good' },
+  { t:'黑天鹅事件爆发，全市场暴跌',    id:null,     e:-0.075, tone:'bad' },
+];
+
+/* ---------------- 待决事件（抉择） ----------------
+   与上面的 EVENTS 是两套东西：EVENTS 是「市场自己发生的事」，玩家只能看；
+   CHOICES 是「必须由玩家拍板的事」—— 触发即暂停，弹出 2~4 个选项，每个选项
+   把概率和代价写在脸上，不做选择就不能继续。
+
+   选项的词汇表（resolveChoice 统一结算）：
+     none                    什么也不发生
+     cash: n                 现金 ±n
+     costAdd: n              日耗永久 ±n
+     bet   {frac,p,win,lose} 押 frac 比例现金：p 概率赚 stake×win，否则亏 stake×|lose|
+     cashIf{p,win,lose}      p 概率现金 ±win，否则 ±lose
+     costIf{p,win,lose}      p 概率日耗 ±win，否则 ±lose
+     hit   {asset,pct}       某资产价格立刻 ±pct（会守硬底）
+     hitIf {asset,p,win,lose} p 概率让该资产 ±win，否则 ±lose
+     buyPct{asset,frac}      用 frac 比例现金买入该资产
+     sellAll: assetId        清空该资产现货持仓
+     closeAll                平掉全部杠杆仓位
+     addMargin: frac         给杠杆仓位追加 frac 比例现金作为保证金（降低实际杠杆）
+
+   数值取向：**大多数赌注是负期望或接近零期望** —— 选择它们是因为"想赢"，
+   而不是因为"稳赚"。只有「内幕消息」「朋友创业」这类给了微弱的正期望，
+   用来奖励愿意承担波动的人。 */
+const CHOICES = [
+  {
+    id:'tip', icon:'📩', tone:'gold', title:'内幕消息',
+    text:'一个自称券商的人给你发私信：「蓝筹股票明天必涨，信不信由你。」他连你的名字都写对了。',
+    cond:{ minDay:20, minCash:2000 },
+    opts:[
+      { label:'重仓押上', sub:'押 50% 现金 · 40% 赚 30% / 60% 亏 20%',
+        bet:{ frac:0.50, p:0.40, win:0.30, lose:-0.20 } },
+      { label:'小试一手', sub:'押 10% 现金 · 同样的赔率',
+        bet:{ frac:0.10, p:0.40, win:0.30, lose:-0.20 } },
+      { label:'反手举报他', sub:'拿举报奖金 ¥3,000，一分风险不担', cash:3000 },
+      { label:'拉黑无视', sub:'什么也不发生', none:true },
+    ],
+  },
+  {
+    id:'ponzi', icon:'💎', tone:'gold', title:'稳赚不赔的理财',
+    text:'有人推荐一款「年化 300%、随时可赎回」的理财。他说自己已经赚了三轮，还给你看了截图。',
+    cond:{ minDay:45, minCash:3000 },
+    opts:[
+      { label:'投 50% 进去', sub:'30% 拿回 3 倍 / 70% 血本无归',
+        bet:{ frac:0.50, p:0.30, win:2.00, lose:-1.00 } },
+      { label:'投 10% 试试水', sub:'30% 拿回 3 倍 / 70% 血本无归',
+        bet:{ frac:0.10, p:0.30, win:2.00, lose:-1.00 } },
+      { label:'举报它', sub:'拿举报奖励 ¥2,000', cash:2000 },
+      { label:'不碰', sub:'你见过太多这种故事了', none:true },
+    ],
+  },
+  {
+    id:'startup', icon:'🚀', tone:'gold', title:'朋友拉你入股',
+    text:'大学室友的创业公司要融资，他给你留了一个额度：「兄弟价，闭眼投。」',
+    cond:{ minDay:70, minCash:15000 },
+    opts:[
+      { label:'重仓入股', sub:'投 30% 现金 · 28% 赚 2.5 倍 / 72% 全部归零',
+        bet:{ frac:0.30, p:0.28, win:2.50, lose:-1.00 } },
+      { label:'意思一下', sub:'投 10% 现金 · 同样的赔率',
+        bet:{ frac:0.10, p:0.28, win:2.50, lose:-1.00 } },
+      { label:'婉拒', sub:'不投，友谊长存', none:true },
+    ],
+  },
+  {
+    id:'poker', icon:'🃏', tone:'gold', title:'地下牌局',
+    text:'一个牌友凑了个局，说他有「必胜法」，胜率能到七成。你想起他上次也这么说过。',
+    cond:{ minDay:30, minCash:1000 },
+    opts:[
+      { label:'梭哈一把', sub:'押 40% 现金 · 45% 翻倍 / 55% 全没',
+        bet:{ frac:0.40, p:0.45, win:1.00, lose:-1.00 } },
+      { label:'小赌怡情', sub:'押 8% 现金 · 45% 翻倍 / 55% 全没',
+        bet:{ frac:0.08, p:0.45, win:1.00, lose:-1.00 } },
+      { label:'不去', sub:'省下这笔钱', none:true },
+    ],
+  },
+  {
+    id:'headhunter', icon:'💼', tone:'', title:'猎头来电话了',
+    text:'一家公司想挖你，薪水比现在高得多 —— 但要你签两年竞业，期间不能碰自己的投资。',
+    cond:{ minDay:40 },
+    opts:[
+      { label:'接受 offer', sub:'立刻 +¥9,000 签约奖 · 但日耗永久 +¥6（应酬变多）',
+        cash:9000, costAdd:6 },
+      { label:'讨价还价', sub:'50% 谈到 +¥20,000 · 50% 谈崩，一无所获',
+        cashIf:{ p:0.50, win:20000, lose:0 } },
+      { label:'婉拒', sub:'专心做自己的事', none:true },
+    ],
+  },
+  /* 下面两个是「工作线」的关键节点拍板 —— 挂机式职业不需要天天操作，
+     但"保饭碗还是拿钱走人"这种事必须让玩家自己决定。 */
+  {
+    id:'layoff', icon:'📉', tone:'bad', title:'公司裁员',
+    text:'行业不景气，公司宣布优化。HR 把你叫进小会议室，桌上放着一份协议。',
+    cond:{ hasJob:true, minDay:90 },
+    opts:[
+      { label:'签字，拿赔偿走人', sub:'领 30 天工资的补偿金，然后失业', severJob:30 },
+      { label:'托关系保住工作', sub:'花 ¥2,500 疏通，饭碗无忧', cash:-2500 },
+      { label:'主动申请降级', sub:'降到上一个职级，但把工作保住', demote:1 },
+    ],
+  },
+  {
+    id:'poach', icon:'🎯', tone:'gold', title:'猎头开价',
+    text:'一个猎头找上门，开出的薪水比你现在高一档，还附送一笔签约金。',
+    cond:{ hasJob:true, minDay:150 },
+    opts:[
+      { label:'跳槽过去', sub:'拿 ¥12,000 签约金，直接入职更高一级的岗位', cash:12000, switchJob:'next' },
+      { label:'留下，谈加薪', sub:'55% 谈成 +¥9,000 · 45% 谈崩，一无所获',
+        cashIf:{ p:0.55, win:9000, lose:0 } },
+      { label:'婉拒，专注当下', sub:'什么也不发生', none:true },
+    ],
+  },
+  {
+    id:'audit', icon:'📋', tone:'bad', title:'税务稽查',
+    text:'税务部门找上门，说你的投资收益需要补税。临走前补了一句：「数字可以商量。」',
+    cond:{ minDay:120, minNet:60000 },
+    opts:[
+      { label:'老实补税', sub:'按账面缴纳 ¥12,000', cash:-12000 },
+      { label:'找他"商量"', sub:'60% 只花 ¥2,000 · 40% 被罚 ¥28,000',
+        cashIf:{ p:0.60, win:-2000, lose:-28000 } },
+    ],
+  },
+  {
+    id:'landlord', icon:'🔑', tone:'bad', title:'房东要涨租',
+    text:'房东说这片区租金涨疯了，下个月起房租上调 40%，爱住不住。',
+    cond:{ rentedOnly:true, minDay:50 },
+    /* ★ 这个事件原本三个选项**全都永久加日耗**，等于给每一局强行加了一笔
+       「+8/天 的税」：标定实测 1200 天下平均 costBias = 7.6（上限就是 8），
+       保守玩法全被它压破产。抉择的前提是"有得选" —— 所以补了第四条
+       「搬走」：一次性掏搬家费，换回不涨租。
+       现在它才是一道真的取舍：现金宽裕就一次性买断，现金紧张就只能认。 */
+    opts:[
+      { label:'认了', sub:'日耗永久 +¥4', costAdd:4 },
+      { label:'找个人合租分摊', sub:'日耗永久 +¥2，但生活质量下降', costAdd:2 },
+      { label:'跟他谈', sub:'55% 谈成不涨 · 45% 谈崩，日耗 +¥6',
+        costIf:{ p:0.55, win:0, lose:6 } },
+      { label:'搬走，另找一间', sub:'一次性花 ¥3,000 搬家 · 日耗不变', cash:-3000 },
+    ],
+  },
+  {
+    id:'exchange', icon:'🏦', tone:'bad', title:'交易所挤兑',
+    text:'你常用的交易所突然限制提现，你的加密币全卡在里面。群里已经炸了。',
+    cond:{ holdAsset:'crypto', minDay:60 },
+    opts:[
+      { label:'立刻割肉提现', sub:'加密币价格立刻 −25%，但钱拿得回来',
+        hit:{ asset:'crypto', pct:-0.25 } },
+      { label:'赌它能撑住', sub:'65% 无事发生 · 35% 加密币直接归零',
+        hitIf:{ asset:'crypto', p:0.65, win:0, lose:-1.00 } },
+      { label:'加仓抄底', sub:'用 30% 现金买入加密币 —— 别人恐惧我贪婪',
+        buyPct:{ asset:'crypto', frac:0.30 } },
+    ],
+  },
+  {
+    id:'blackswan', icon:'🌪', tone:'bad', title:'恐慌蔓延',
+    text:'市场连续暴跌，所有人都在夺门而出。你的手机响个不停，朋友圈全是「割肉」截图。',
+    cond:{ minDay:80, crashed:0.15 },
+    opts:[
+      { label:'抄底蓝筹', sub:'用 60% 现金买入蓝筹股票', buyPct:{ asset:'stock', frac:0.60 } },
+      { label:'躲进债券', sub:'用 60% 现金买入稳健债券', buyPct:{ asset:'bond', frac:0.60 } },
+      { label:'清仓避险', sub:'卖出全部股票持仓', sellAll:'stock' },
+      { label:'按兵不动', sub:'什么也不做，睡一觉', none:true },
+    ],
+  },
+  {
+    id:'call', icon:'📞', tone:'bad', title:'券商来电：保证金告急',
+    text:'你的杠杆仓位快被打穿了。券商要求追加保证金，否则下一根 K 线就强制平仓。',
+    cond:{ needRiskPos:0.55 },
+    opts:[
+      { label:'追加保证金', sub:'再投 15% 现金进去，把爆仓线推远', addMargin:0.15 },
+      { label:'硬扛', sub:'不平不补 · 45% 撑过去 / 55% 直接爆仓', forceOut:{ p:0.45 } },
+      { label:'立刻平仓', sub:'落袋为安，接受现在的盈亏', closeAll:true },
+    ],
+  },
+];
+
+/* ---------------- 成就 ----------------
+   跨局持久保存（meta.ach）。和结算评级是一套：评级给"这一局打得怎么样"，
+   成就给"我解锁了什么"。两者合起来才是"再来一局"的理由。 */
+const ACHIEVEMENTS = [
+  { id:'free',      icon:'👑', name:'财富自由',     desc:'净资产达到 ¥1 亿' },
+  { id:'grade_a',   icon:'🥇', name:'小有成就',     desc:'结算评级拿到 A 或以上' },
+  { id:'grade_b',   icon:'🥈', name:'站稳脚跟',     desc:'结算评级拿到 B 或以上' },
+  { id:'big_trade', icon:'💥', name:'一击必中',     desc:'单笔现货交易盈利超过 ¥5 万' },
+  { id:'lev_win',   icon:'⚡', name:'杠杆之神',     desc:'单笔杠杆仓位盈利超过 ¥10 万' },
+  { id:'blowup',    icon:'💀', name:'爆仓体验卡',   desc:'被强制平仓一次（保证金全损）' },
+  { id:'lottery',   icon:'🎟', name:'嗜赌成性',     desc:'彩票累计净亏超过 ¥10,000' },
+  { id:'villa',     icon:'🏡', name:'住进别墅',     desc:'拥有一套别墅' },
+  { id:'rent4ever', icon:'🛏', name:'租房主义者',   desc:'全程住合租单间，撑到第 1000 天' },
+  { id:'reborn',    icon:'🕊', name:'浪子回头',     desc:'在债务模式下还清全部欠款并复活' },
+  { id:'survivor',  icon:'🛡', name:'稳健派',       desc:'整局没有破产，活到结算' },
+  { id:'lucky',     icon:'🍀', name:'运气也是实力', desc:'事件抉择中赌赢 8 次' },
+  { id:'broke',     icon:'🧾', name:'一无所有',     desc:'结算时净资产低于 ¥1,000' },
+  { id:'worker',    icon:'🏪', name:'打工人',       desc:'累计上班满 500 天' },
+  { id:'promoted',  icon:'📈', name:'升职加薪',     desc:'在任意岗位上做到最高职级' },
+  { id:'boss',      icon:'🏬', name:'当上老板',     desc:'开出第一家店' },
+  { id:'tycoon',    icon:'🏙', name:'商业帝国',     desc:'四档生意全部拥有' },
+];
+const ACH_MAP = {};
+ACHIEVEMENTS.forEach(a => ACH_MAP[a.id] = a);
+
+/* =====================================================================
+   工作与经营
+   ---------------------------------------------------------------------
+   设计动机（用户原话）："现实中你不会只靠投资活着，你有工资。"
+   价格换成均值回归之后，"只靠资产活"的角色在数学上必然落入
+   "要么指数膨胀、要么慢性归零"的二选一（推导见 CFG 里 AUSTERITY 那段）。
+   工资才是现实里那条真正的现金流 —— 这一轮把它补上。
+
+   ★ 铁律：工资和店铺利润都是**固定金额（元/天）**，绝不按资产比例给钱。
+     一旦按比例给，就等于给资产悄悄加了一份复利收益，几千年下来必然是
+     用户最反感的数值膨胀（"债券票息"那一轮已经实测过一次，见 CFG 备注）。
+     所以这两套系统的分工非常清楚：
+       工资 / 店铺 = 活得下去（≈ 覆盖日耗，略有结余，攒钱很慢）
+       投资 / 杠杆 = 富得起来（唯一能摸到 ¥1 亿的路）
+
+   JOBS —— 挂机式职业（用户选的形态）：
+     入职后日薪自动到账，工龄攒够自动升职加薪；玩家只在关键节点拍板
+     （应聘 / 加班 / 辞职 / 被裁）。和"资产挂着自动跑"的节奏一致，
+     不会把 4 倍速切得稀碎。
+       pay     = 1 级日薪
+       grow    = 每升一级日薪增加的比例（pay × (1 + grow×(level−1))）
+       upDays  = 每升一级需要的本岗位工龄（天）
+       req     = 应聘所需的「累计上班天数」（防止一步登天，也让跳槽有节奏）
+       rank    = 各级职称（只用于显示，让升职有实感）
+   岗位设计意图：高薪岗位的门槛是"工龄"，也就是**你必须先打工**。
+   所以开局那份低薪工作不是过渡，而是整条职业线的起点。 */
+const JOBS = [
+  { id:'clerk',   icon:'🏪', name:'便利店店员', pay:12, levels:4, grow:0.26, upDays:90,
+    req:0,    rank:['见习店员','正式店员','资深店员','店长'] },
+  { id:'office',  icon:'🧑‍💼', name:'公司职员',   pay:17, levels:4, grow:0.28, upDays:100,
+    req:220,  rank:['初级职员','项目专员','资深专员','小组长'] },
+  { id:'manager', icon:'📊', name:'部门主管',   pay:24, levels:4, grow:0.30, upDays:120,
+    req:550,  rank:['见习主管','主管','高级主管','部门经理'] },
+  { id:'exec',    icon:'🏢', name:'公司高管',   pay:34, levels:4, grow:0.32, upDays:150,
+    req:1100, rank:['总监助理','总监','副总裁','总裁'] },
+];
+const JOB_MAP = {}; JOBS.forEach(j => JOB_MAP[j.id] = j);
+
+/* SHOPS —— 生意。
+   一次投入一笔本金，换一份**固定的日现金流**（不是按资产比例分红）。
+   成本是硬门槛：开局现金 ¥15,000，连最便宜的早餐摊（¥10,000）都要掏掉三分之二，
+   所以"开局开店"是一个真决策，而不是顺手买一件。
+
+   ★ 核心改动（用户反馈："自己打工同时还能照看好几家店，竟然还能赚钱"）：
+   旧版用「利润 ×0.55」当雇人折扣 —— 那是一张**跟规模无关的万能券**，
+   店越大越离谱：¥40 万的连锁店躺赚 ¥880/天，什么都不用干。
+   现在改成真实的成本结构：
+       profit = 日营收（这门生意的流水）
+       wage   = 雇人看店要付的日薪（人工成本，固定金额）
+       净利    = profit − wage      ← 雇人（打工时的唯一选择）
+       净利    = profit             ← 自营（亲自看店，但必须无业）
+   房租/进货这些固定成本已经内含在 profit 里了，wage 只算"多雇一个人的工资"。
+   人力成本占营收约 45%，剩下 55% 是雇人模式的天花板 —— 这个比例参照现实餐饮零售，
+   也是"躺着收钱"能收到的上限：再高就是在印钞。
+
+   回本周期：自营 385~500 天（约 1~1.4 年）；雇人 714~909 天（约 2~2.5 年）。
+   对比资产端 1000 天倍数（债券 ×4.0 / 基金 ×4.6 / 股票 ×6.0 / 加密 ×8.1），
+   自营 1000 天约 ×3.0~3.6、雇人约 ×1.9~2.3 —— 店铺**跑输任何资产**，
+   这是刻意的：它的卖点从来不是高收益，而是"不波动、不归零、不用盯盘"。
+   想靠开店发财是走不通的，它只提供一条抗风险的第二现金流。 */
+const SHOPS = [
+  { id:'stall', icon:'🥟', name:'早餐摊',   cost:10000,  profit:26,   wage:12,  desc:'起早贪黑，本小利薄' },
+  { id:'milk',  icon:'🧋', name:'奶茶店',   cost:55000,  profit:130,  wage:58,  desc:'地段就是命' },
+  { id:'mart',  icon:'🏬', name:'便利店',   cost:200000, profit:430,  wage:195, desc:'二十四小时，稳定流水' },
+  { id:'chain', icon:'🏙', name:'连锁门店', cost:800000, profit:1600, wage:720, desc:'体量起来了，得养一队人' },
+];
+const SHOP_MAP = {}; SHOPS.forEach(s => SHOP_MAP[s.id] = s);
+
+const CFG = {
+  START_CASH: 15000,
+  BASE_COST: 10,        // 基础日生活费（不含住房）
+  COST_STEP: 500,       // 每多少天涨一次生活费
+  COST_STEP_ADD: 2,     // 每次涨多少
+  /* ★ 标定说明（重要）：这组数字在"价格换成均值回归"那一轮被整个重算过 ——
+     旧版资产 1000 天能涨 60 倍，"日耗 ¥28 + 本金 ¥1 万"根本不算什么；
+     新模型下资产 1000 天只涨 2~5 倍，于是必须重新配平"本金 / 收益 / 开销"三方。
+
+     【为什么必须三个一起动】用"全仓基金躺平"当基准，把 1000 天拆开算：
+       每天的开销是靠"卖掉一点持仓"换来的，所以真正决定生死的不是花了多少钱，
+       而是**卖出份数 = ∫ 日耗 / 价格 dt** 有没有超过一开始买到的份数。
+       本金 ¥1 万（100 份）· 旧日耗曲线（16 起、每 150 天 +4，共 ¥4.0 万）
+         → 需要卖 131 份 > 100 份 → **必破产**（实测 100%，连债券都救不了）
+       本金 ¥1.5 万（150 份）· 本组日耗（10 起、每 500 天 +2，共 ¥2.1 万）
+         → 需要卖 93 份 < 150 份 → 活，且剩 ¥2 万级（约 +60%）
+     三个旋钮的分工：
+       · 本金 ↑50% 直接抬高份数分母，是最有效的一档；
+       · 日耗斜率放缓（150 天 +4 → 500 天 +2）避免后期开销吃掉全部收益；
+       · 日耗的绝对值同步下调（¥28 → ¥20 起步，含合租租金 ¥10）。
+     房租仍是「每天硬扣」的固定成本，日耗每涨一点，对生存率的打击都是非线性的。 */
+  DEBT_ROUNDS: 6,       // 债务模式回合数
+  DEBT_RATE: 0.06,      // 债务每回合利息
+  DEBT_DAY_FEE: 2.5,    // 破产清算成本 = 经营天数 × 该系数（越晚破产债越重）
+  DEBT_GAMBLE_WIN: 0.48,// 孤注一掷胜率
+  DEBT_GAMBLE_MUL: 2.0,
+  // 彩票店现货：按面值分档、各自独立。每档每个交易日补 N 张，未刮掉的一直累积到上限。
+  // 上限给得高是为了"攒"—— 想一次刮个爽，就忍几天不刮。
+  LOTTERY_STOCK_CAP: 30,                            // 每档现货上限（张）
+  LOTTERY_RESTOCK: { t10:5, t20:3, t30:2, t50:2 },  // 每档每交易日补货（张）
+  LOTTERY_STOCK_INIT: 6,                            // 新档开局每档现货（张）
+  RELIST_P: 0.15,       // 退市资产每个交易日「重新上市」的概率（价格已打到 0 时才会用到）
+
+  /* ---------- 住房 ----------
+     住所是「持续状态」：任何时刻你都有地方住（最低是合租单间），
+     租房 = 每天付租金，买房 = 一次性掏钱（或首付 + 月供）换来不用再交租。
+     房价走自己的一套周期，和股市不完全同步 —— 所以会出现
+     "前期咬牙贷款上车、后期房价反而跌了"这种剧本。 */
+  HOUSE_DOWN: 0.30,     // 贷款首付比例（余下 70% 走房贷）
+  HOUSE_RATE: 0.0002,   // 房贷日利率（等额本息，按交易日计）
+  /* 贷款期数 730 天（约 2 个游戏年）是标定出来的硬约束：
+     期数 365 天时月供高达 ¥31.8/天，加上生活费就是 ¥51.8/天 ——
+     占初始资产（¥10,000）的 0.52%/天，已经超过基金 0.41%/天 的几何收益，
+     等于"贷款买房必死"。拉到 730 天后月供降到 ¥16.5/天，
+     总日耗 ¥36.5：比合租（¥32）贵一点，但两年后月供归零、房子归你。 */
+  HOUSE_TERM: 730,      // 贷款期数（交易日）
+  HOUSE_FEE: 0.03,      // 卖房手续费（中介 + 税费）
+  HOUSE_DRIFT: 0.0007,  // 房价指数日均漂移（长期慢牛）
+  HOUSE_VOL: 0.0032,    // 房价指数日波动
+  HOUSE_BUBBLE_P: 0.0012, // 每交易日「泡沫破裂」概率（暴跌 8%~20%）
+  HOUSE_BOOM_P: 0.0018,   // 每交易日「短期暴涨」概率（+6%~+16%）
+  HOUSE_IDX_LO: 0.55,   // 房价指数下限（地板）
+  HOUSE_IDX_HI: 3.00,   // 房价指数上限（天花板）
+  /* ---------- 目标：无尽模式 ----------
+     用户反馈（原话意思）："没必要 1000 天强制通关，也没必要 100 万强制通关"，
+     索性做成无尽 —— 时间不设上限，净资产每跨过一档就弹一次提示，
+     直到摸到 ¥1 亿（世代终点）：那时弹世代结算，可「开启下一世代」或「继续玩」。
+     破产仍然是唯一的强制出口（债务清偿失败 → 本局结束）。
+     为什么终点敢定 1 亿：价格换成均值回归之后，"躺着不动"1000 天只到 ¥2~3 万，
+     想摸 1 亿必须择时、杠杆、事件三样一起用 —— 它是个真目标，不是走个形式。 */
+  GOAL: 100000000,      // 世代终点：¥1 亿（达到即弹世代结算）
+  MILESTONES: [20000, 50000, 100000, 200000, 500000, 1000000,
+               2000000, 5000000, 10000000, 20000000, 50000000, 100000000],
+
+  /* ---------- 财富称号（HUD 常驻，也是结算评级） ----------
+     以前 RATING 只在结算那一屏出现一次；改成无尽模式后它变成随时可见的进度条：
+     HUD 顶部显示当前称号 + 距下一档还差多少。档位之间一律 ×10 或 ×5，方便记忆。
+     标定基准（新经济下的粗略终局）：躺平不动 ≈ ¥2 万（D）；买基金躺平 ≈ ¥2 万（D）；
+     会择时的人 ≈ ¥10 万~50 万（C~B）；会用杠杆的人才有资格谈 A 和 S。 */
+  RATING: [
+    { g:'S', min:100000000, title:'财富自由', tone:'gold' },
+    { g:'A', min:10000000,  title:'千万身家', tone:'gold' },
+    { g:'B', min:1000000,   title:'百万富翁', tone:'' },
+    { g:'C', min:100000,    title:'小有积蓄', tone:'' },
+    { g:'D', min:0,         title:'一穷二白', tone:'bad' },
+  ],
+
+  SURVIVE_DAYS: 1000,   // 活满这么多天解锁「老不死」成就（不再是结算条件）
+
+  /* ---------- 事件抉择 ----------
+     原来 EVENTS 是 4%/天自动生效，玩家只能看着日志 —— 这是"没事可做"的主因之一。
+     改成「每 EV_GAP 天必定触发一次待决事件」：触发即暂停、弹出 2~4 个选项、
+     每个选项把概率和代价写在脸上。1000 天 / 55 ≈ 18 次抉择，全程都有事做。
+     间隔用"必定触发"而不是概率，是为了节奏可预期 —— 玩家知道下一波什么时候来。 */
+  EV_FIRST: 35,         // 第一个待决事件最早出现的天数
+  EV_GAP: 55,           // 之后每多少天触发一次
+  /* 事件造成的日耗永久偏移的上限（¥/天）。
+     必须封顶：标定时发现「房东涨租」一轮能叠加到 +56/天（≈1000 天多花 ¥5.6 万），
+     直接把保守玩法的破产率从 0% 顶到 76%。房租是每天硬扣的固定成本，
+     日耗每涨一点对生存率的打击都是超线性的 —— 这条在住房那一轮就吃过一次亏。 */
+  COST_BIAS_CAP: 8,
+
+  /* ---------- 节衣缩食 ----------
+     净资产跌破 AUSTERITY_LINE 就自动压缩开销（日耗 ×AUSTERITY_K），
+     涨回 AUSTERITY_OUT 以上才恢复正常（滞回，避免在阈值上反复横跳刷日志）。
+
+     为什么要有它：只要玩家的收入**全部来自资产**，数学上就注定"要么指数膨胀、
+     要么慢性归零"（推导见 ASSETS 里债券那段）。价格模型改成均值回归之后，
+     "慢性归零"这条必然暴露 —— 全仓债券躺平实测 1500 天打平、但 2500 天必死，
+     死亡中位 2194 天。玩家什么都没做错，却要眼睁睁看数字一天天变小。
+
+     节衣缩食不解决这个数学问题（真解决要靠"工资"，那是延后项），但它做了两件事：
+       1. 把破产时间轴拉长 —— 给玩家一个**可以自救的窗口**（换仓 / 择时 / 加杠杆翻本），
+          而不是在毫无操作空间的绝境里慢慢等死；
+       2. 让"穷"这件事在游戏里有反馈 —— 净资产一跌破线，日志和提示会明说
+          "开始省吃俭用"，玩家立刻明白自己处境变了。这比数字无声下跌好得多。
+
+     0.35 这个折扣是标定出来的：再高（0.5）破产只从 2194 天推到 2650 天，杯水车薪；
+     再低（0.2）日耗只剩 ¥5，玩家会觉得自己在作弊。0.35 落在"明显省了、
+     但仍然肉疼"的位置。 */
+  AUSTERITY_LINE: 6000,
+  AUSTERITY_OUT:  9000,
+  AUSTERITY_K:    0.35,
+
+  /* ---------- 工作与经营（参数含义详见 JOBS / SHOPS 表上方那段） ----------
+     工资力度 = "糊口为主"（用户选的档）：
+       低薪岗位的日薪 ≈ 日耗的 60%，做到中段职级才刚好吃平（净结余 ≈ 0），
+       高管/满级之后才有每天 +10~+30 的结余 —— 攒钱很慢，发不了财。
+     这组数字的意义是**修掉数学上的必死**，而不是给玩家一条致富捷径：
+       1000 天纯打工的累计结余只有 ¥1 万上下，离 ¥1 亿差四个数量级。
+       真想富，仍然只能靠择时和杠杆。 */
+  OT_MUL: 1.5,          // 加班工资倍率（多赚的那部分是"拿健康换的"）
+  OT_FATIGUE: 1.7,      // 加班每天累积的疲劳；满 100 就累倒
+  OT_RECOVER: 2.5,      // 不加班时每天自然恢复的疲劳
+  OT_SICK_DAYS: 7,      // 累倒后停薪的天数
+  OT_SICK_COST: 800,    // 累倒的医药费（一次性地从现金扣）
+  /* 管理半径：人只有一个，店开了 2 家以上就得靠"雇人 + 盯人"。
+     从第 2 家需要雇人打理的店开始，这家的人力成本再上浮 15%（第 2 家 ×1.15、
+     第 3 家 ×1.30 …）—— 你要花更多时间协调，就得请更靠谱（更贵）的人。
+     这条是"打工同时养好几家店"的第二道刹车：光算工资还不够，
+     多店本身就有管理开销。0.15 是标定出来的 —— 0.25 时第 4 家店几乎白干，
+     玩家会觉得自己被惩罚；0.08 又几乎无感。 */
+  SHOP_MGT_STEP: 0.15,
+
+  /* ★ 这里曾经想加「债券票息」（每天按持仓市值派息）来救债券，实测否决了。
+     结论留档，别再试一遍：
+
+       票息 = 按市值比例给钱 = **复利**。只要派息够覆盖当天日耗，玩家就
+       永远不需要卖出，持仓份数锁死，而价格还在涨 → 市值线性膨胀。
+       实测票息 0.0010 时，持仓从 150 份只掉到 146 份就停住，
+       净资产 15,000 → 58,669（1500 天，×3.9）—— 正是用户最反感的数值膨胀。
+
+     数学上的两难（设 M = 持仓市值，r = 当日价格涨幅率）：
+         M' = M·r(t) − 日耗        平衡点 M* = 日耗 / r(t)
+       而 dM'/dM = r > 0，**平衡点不稳定** —— 要么 M > M* 一路指数膨胀，
+       要么 M < M* 一路衰减到 0。不存在"稳定糊口"的中间态。
+       根因：价格是线性趋势线（r(t) = trend/(1+trend·t) 随时间衰减），
+       而日耗恒定，于是 ∫日耗/价格 dt 对数发散 —— **纯躺平必死，只分早晚**。
+     所以债券的正解不是给它加收益，是**把它涨得太慢这个毛病修正掉**（见 ASSETS.bond）。 */
+
+  /* ---------- 杠杆合约 ----------
+     设计动机："我破不了产"+"判断对了也不爽"。杠杆同时解决两件事：
+     看对一次翻几倍（快感），看错直接爆仓（最自然的破产路径 —— 他自己选的）。
+     仓位是独立于现货 hold/cash 的一套对象，不动现有任何账目，所以不会破坏平衡。 */
+  POS_LEVS: [2, 3, 5],  // 可选杠杆倍数
+  POS_MIN: 100,         // 最低开仓保证金（防止 1 块钱开 5 倍）
+  /* 融资成本：每天按名义市值从保证金里抽一次（记在 q.fee，不动 q.margin）。
+     这是让杠杆"不是白拿的"的唯一手段 —— 资产长期是正收益的，乘以倍数等于白拿。
+
+     ★ 价格换成均值回归之后，这个费率被整个重标过。
+     旧模型里资产是"无锚复利"，费率必须卡在 0.003~0.004 的悬崖边上才压得住杠杆，
+     而且那条曲线"是悬崖不是斜坡"，参数一动就翻天。新模型下资产 1000 天只涨 2~5 倍，
+     日收益被钉在 0.26%（基金）~0.65%（加密币）的量级上，费率自然也该落在同一量级。
+
+     取值逻辑 —— 让"押对方向但拿太久"变成亏钱，让"押对方向且拿得短"赚钱：
+       开仓时 5x 每天抽走保证金的 5 × 0.0030 = 1.5%
+       基金 日趋势 0.26%~0.07%（越到后期越低）  → 长期持有杠杆基金是负期望，别碰
+       股票 日趋势 0.40%                       → 短线正期望，值得赌判断
+       加密币 日趋势 0.65%                     → 明显划算，但 29% 概率直接归零
+     于是杠杆从"躺赢开关"变回它本来的样子 —— **短线工具**：
+     赌一波行情（几天到几十天）划算，当成长期持仓必被利息磨穿。 */
+  POS_RATE: 0.0030,
+};
+
+/* =====================================================================
+   数据层抽象 —— 未来接后端只需替换这个对象
+   ===================================================================== */
+const Storage = {
+  KEY: 'wealth_road_save_v1',
+  metaKey: 'wealth_road_meta_v1',
+  async load() {
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  },
+  async save(data) {
+    try { localStorage.setItem(this.KEY, JSON.stringify(data)); return true; }
+    catch (e) { return false; }
+  },
+  async clear() { try { localStorage.removeItem(this.KEY); } catch (e) {} },
+  async loadMeta() {
+    try {
+      const raw = localStorage.getItem(this.metaKey);
+      return raw ? JSON.parse(raw) : { bankruptcies:0, bestNet:0, runs:0 };
+    } catch (e) { return { bankruptcies:0, bestNet:0, runs:0 }; }
+  },
+  async saveMeta(m) { try { localStorage.setItem(this.metaKey, JSON.stringify(m)); } catch (e) {} },
+  // 未来：async save(data){ await fetch('/api/save',{method:'POST',body:JSON.stringify(data)}); }
+  // 未来：async load(){ const r = await fetch('/api/save'); return r.json(); }
+};
+
+/* =====================================================================
+   状态
+   ===================================================================== */
+let state = null;
+let meta = { bankruptcies:0, bestNet:0, runs:0 };
+let ui = { view:'market', sheet:null, lev:null, prevNet:0, priceOpen:{}, toastCache:[] };
+
+function newState() {
+  const prices = {}, hist = {}, avg = {}, hold = {}, prev = {};
+  ASSETS.forEach(a => {
+    prices[a.id] = a.base; hist[a.id] = [a.base]; avg[a.id] = 0; hold[a.id] = 0; prev[a.id] = a.base;
+  });
+  return {
+    v: 1,
+    cash: CFG.START_CASH,
+    day: 0,
+    speed: 1,
+    prices, hist, avg, hold, prev,
+    lottery: {
+      ticket: 't10',
+      stock: initStock(),
+      spent:0, won:0, bought:0, bestWin:0,
+      hits:{回本:0,小奖:0,中奖:0,大奖:0,头奖:0},
+      feed:[],
+    },
+    // 住房：开局默认合租单间（兜底底线，保证任何时刻都有地方住）
+    home: { id:'share', owned:false, paid:0, loan:0, loanLeft:0, pay:0 },
+    houseIdx: 1.0,             // 房价指数（1.0 = 基准价）
+    houseHist: [1.0],
+    phase: 'normal',           // normal | debt | over
+    debt: { amount:0, round:0, workLeft:3 },
+    cost: CFG.BASE_COST + H_MAP.share.rent,   // 开局住合租：生活费 + 租金
+    costBias: 0,               // 事件抉择留下的日耗永久增减（房东涨租 / 加薪应酬…）
+    austere: false,            // 是否处于「节衣缩食」（净资产跌破底线时自动开、回升后自动关）
+    // —— 工作与经营（工资 = 活得下去，投资 = 富得起来）——
+    job: null,                 // 在职岗位 { id, level, exp, fatigue, overtime, sickLeft }
+    workDays: 0,               // 累计上班天数（应聘更高薪岗位的门槛）
+    shops: [],                 // 已开的生意 [{ id, day }]，每档最多 1 家
+    income: 0,                 // 昨日入账的「工资 + 店铺利润」，供 HUD 显示日结余
+    peakNet: CFG.START_CASH,
+    startNet: CFG.START_CASH,
+    milestones: [],
+    log: [],
+    trades: 0,
+    run: (meta.runs || 0) + 1,
+
+    // —— 杠杆仓位（独立于现货 hold/cash 的一套账，互不影响）——
+    pos: [],
+    posSeq: 1,
+    // —— 待决事件：非 null 时时间不推进（触发即暂停，不选完不能继续）——
+    pendingEv: null,
+    lastEvDay: 0,
+    evWin: 0, evLose: 0,
+    // —— 本局档案（结算用）——
+    bankrupted: false,
+    result: null,       // { reason, day, net, grade, title }
+  };
+}
+
+/* ---------------- 工具 ---------------- */
+function randn() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+// 价格走势图只保留最近 48 个交易日
+function pushHist(id, v) {
+  const h = state.hist[id];
+  h.push(v);
+  if (h.length > 48) h.shift();
+}
+// 硬底：价格一律不许跌破 base × floor —— 随机事件也得守这条规矩，
+// 否则"债券跌不过四成"这种承诺会被一次 -1.5% 的违约风波偷偷打破。
+function applyFloor(id) {
+  const a = A_MAP[id];
+  const fl = a.base * (a.floor || 0);
+  if (state.prices[id] < fl) state.prices[id] = fl;
+}
+function money(n, dp) {
+  if (dp === undefined) dp = 2;
+  return n.toLocaleString('zh-CN', { minimumFractionDigits:dp, maximumFractionDigits:dp });
+}
+function short(n) {
+  const a = Math.abs(n);
+  if (a >= 1e8) return (n/1e8).toFixed(2) + '亿';
+  if (a >= 1e4) return (n/1e4).toFixed(2) + '万';
+  return money(n, 0);
+}
+function signed(n, dp) {
+  const s = n >= 0 ? '+' : '-';
+  return s + money(Math.abs(n), dp === undefined ? 2 : dp);
+}
+/* ---------------- 杠杆仓位：独立于现货的一套账 ----------------
+   一个仓位记住 4 个数：方向 dir、名义市值 notional、自有保证金 margin、开仓价 entry。
+   仓位当前价值 = margin + notional × dir × (现价/开仓价 − 1)
+     · 开仓瞬间 p = entry → 价值正好等于 margin（不凭空生钱）
+     · 5x 多头、标的跌 20% → 价值 = margin − margin×5×0.2 = 0 → 爆仓
+     · 5x 空头、标的涨 20% → 同样归零
+   因为是"margin + 线性盈亏"，追加保证金只要 margin += x 即可，P&L 不受影响 ——
+   所以「券商追保」这个事件不需要任何特殊数学。 */
+function posValue(q, prices) {
+  const pr = prices || state.prices;
+  const p = pr[q.asset];
+  const r = (p > 0) ? (p / q.entry - 1) : -1;   // 退市视为跌 100%
+  return Math.max(0, posBuffer(q) + q.notional * q.dir * r);
+}
+/* 保证金里还没被融资成本吃掉的部分 —— 也就是真正在替你扛风险的垫子。
+   融资成本记在 q.fee 上而不是直接从 q.margin 扣，是为了区分"本金"与"已付出的代价"：
+   如果直接从 margin 扣，一个已经翻倍的仓位会因为 margin 被扣穿而误判爆仓，
+   而实际上它完全付得起利息（利息该由浮盈来付）。 */
+function posBuffer(q) { return q.margin - (q.fee || 0); }
+function posEquity(s) {
+  s = s || state;
+  if (!s.pos || !s.pos.length) return 0;
+  let v = 0;
+  for (const q of s.pos) v += posValue(q, s.prices);
+  return v;
+}
+// 实际杠杆（追加保证金后会降低；被融资成本蚕食后会升高 —— 显示给玩家看"这个仓位越来越危险"）
+function curLev(q) { const b = posBuffer(q); return b > 0 ? q.notional / b : Infinity; }
+// 爆仓价：多头是"跌到这里归零"，空头是"涨到这里归零"。
+// 解 margin + notional×dir×(p/entry − 1) = 0  =>  p = entry × (1 − 1/(L·dir))
+function posLiqPrice(q) {
+  const L = curLev(q);
+  if (!(L > 0)) return q.entry;
+  return q.entry * (1 - 1 / (L * q.dir));
+}
+
+function netWorth(s) {
+  s = s || state;
+  let v = s.cash;
+  for (const a of ASSETS) v += s.hold[a.id] * s.prices[a.id];
+  v += houseEquity(s);          // 自有房产按当日市价计入，扣掉剩余房贷
+  v += posEquity(s);            // 杠杆仓位的当前权益
+  return v;
+}
+function holdValue(s) {
+  s = s || state;
+  let v = 0;
+  for (const a of ASSETS) v += s.hold[a.id] * s.prices[a.id];
+  return v;
+}
+function addLog(text, tone) {
+  state.log.unshift({ d: state.day, t: text, tone: tone || '' });
+  if (state.log.length > 120) state.log.length = 120;
+}
+
+/* ---------------- 存档 ---------------- */
+let saveTimer = null;
+function queueSave() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => { saveTimer = null; Storage.save(state); }, 900);
+}
+// 防抖窗口内关页/切后台会丢进度，这里强制落盘
+function saveNow() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  if (state) Storage.save(state);
+}
+window.addEventListener('beforeunload', saveNow);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+window.addEventListener('pagehide', saveNow);
+
+// 存储不可用（无痕模式 / 被 iframe 拦截 / 配额满）时明确说一声。
+// 这种失败原本是静默的：玩家只会觉得"进度莫名其妙没保存/回到旧进度"。
+function storageBroken() {
+  try {
+    localStorage.setItem('__probe__', '1');
+    localStorage.removeItem('__probe__');
+    return false;
+  } catch (e) { return true; }
+}
+
+/* =====================================================================
+   核心：时间推进
+   ===================================================================== */
+function tick() {
+  /* 有待决事件时，时间一律不推进（防线之二）：
+     触发那一刻已经强制暂停过一次，这里是兜底 —— 玩家如果手动把速度拨回去，
+     也不能靠"跑得快"跳过抉择。 */
+  if (state.pendingEv) { state.speed = 0; renderHud(); return; }
+  state.day++;
+  ui.dayOpenNet = netWorth();   // 记录本日起始净资产，用于显示"今日变动"
+
+  // 1. 价格随机游走（含崩盘与退市归零 —— 这才是"梭哈不卖"会死人的地方）
+  for (const a of ASSETS) {
+    const p = state.prices[a.id];
+    state.prev[a.id] = p;
+
+    // 已退市（价格为 0）：等待新盘重新上市。开盘价贴着合理价，别一上市就是垃圾价
+    if (p <= 0) {
+      if (Math.random() < CFG.RELIST_P) {
+        const np = innerValue(a, state.day) * (0.55 + Math.random() * 0.5);
+        state.prices[a.id] = np;
+        pushHist(a.id, np);
+        addLog('【重新上市】' + a.name + ' 新盘开盘 ¥' + np.toFixed(2), 'gold');
+        toast('「' + a.name + '」重新上市', 'gold');
+      }
+      continue;
+    }
+
+    /* 均值回归：先算今天的合理价，再看现价偏离了多少，
+       每天把偏离收缩一点（×e^−κ）、再叠加一次随机冲击（×e^{vol·z}）。
+       偏离是相对价值线量的，所以"贵了"这个词永远有意义 —— 不会随天数自己漂走。 */
+    const t0 = innerValue(a, state.day - 1);
+    const t1 = innerValue(a, state.day);
+    const dev  = t0 > 0 ? p / t0 : 1;
+    // 对数空间里的 OU：ln(偏离) ← (1−κ)·ln(偏离) + vol·z
+    // 注意必须乘 ln(dev) —— 写成 ln(dev) − κ 的话是每天减一个常数，偏离会无界跌到地板
+    const ndev = Math.exp((1 - a.kappa) * Math.log(dev) + a.vol * randn());
+    let np = t1 * ndev;
+    let crash = false, delist = false;
+
+    // 崩盘：低概率、大幅度，与回归力无关。单日砍掉三到六成 ——
+    // 但崩完就便宜了，回归力会在之后几十天里把它拉回来：这才是"暴跌抄底"的落点。
+    if (a.crashP && Math.random() < a.crashP) {
+      np = p * (1 + a.crashMin + Math.random() * (a.crashMax - a.crashMin));
+      crash = true;
+    }
+
+    // 硬底：按资产分档的绝对下限。加密币 floor = 0，也就是允许真的归零
+    const fl = a.base * (a.floor || 0);
+    if (np < fl) np = fl;
+
+    // 跌破「合理价 × danger」后每天有概率直接退市 ——「能涨十倍，也能归零」里的那个归零
+    if (a.delistP && np > 0 && np <= t1 * (a.danger || 0) && Math.random() < a.delistP) {
+      np = 0; delist = true;
+    }
+
+    state.prices[a.id] = np;
+    pushHist(a.id, np);
+
+    if (delist) {
+      const lost = state.hold[a.id] * p;
+      state.hold[a.id] = 0;
+      state.avg[a.id] = 0;
+      addLog('【退市】' + a.name + ' 归零退市，持仓全部作废'
+        + (lost > 0.5 ? '（损失 ¥' + money(lost, 0) + '）' : ''), 'bad');
+      toast('！' + a.name + ' 退市归零', 'bad');
+    } else if (crash) {
+      addLog('【崩盘】' + a.name + ' 单日 ' + ((np / p - 1) * 100).toFixed(1) + '%', 'bad');
+      toast('「' + a.name + '」暴跌 ' + ((np / p - 1) * 100).toFixed(0) + '%', 'bad');
+    }
+  }
+
+  // 2a. 融资成本：先按名义市值抽血，再查爆仓 —— 顺序反了会漏掉"被利息磨穿"的仓位。
+  //     抽血只动 q.fee（垫子），不动 q.margin（本金），这样浮盈能替本金付利息。
+  chargeFinancing();
+  // 2b. 杠杆仓位爆仓检查
+  //     必须紧跟价格 + 融资成本之后、生活费之前：价格一崩就先强平，后面的破产判定
+  //     面对的才是"清完仓的真实余额"，否则会出现"明明爆仓了却还有钱"的鬼故事。
+  checkBlowups();
+
+  // 3. 随机事件（每 tick 4% 概率）—— 市场自己发生的事，玩家只能看
+  if (Math.random() < 0.04) triggerEvent();
+
+  // 4. 彩票店补货：各档各自 +N 张（时间流速越快，攒得越快）
+  restockLottery();
+
+  // 5. 房价指数（独立于股市的房产周期：慢牛 + 波动 + 偶发泡沫破裂）
+  tickHousePrice();
+
+  // 6. 当日收支：先把工资 / 店铺利润入账，再扣硬支出。
+  //    顺序不能反 —— 当天的工资必须能抵当天的开销，否则"明明在上班却破产"就是鬼故事。
+  //    付不起时的处理顺序都在 payDailyCost 里：现金 → 卖金融资产 → 银行收房 → 破产
+  if (state.phase === 'normal') {
+    accrueIncome();                // 工资 + 店铺利润（含加班疲劳结算与自动升职）
+    checkAusterity();
+    if (!payDailyCost()) return;   // 已进入债务模式
+    amortize();                    // 月供逐日摊销（先息后本），还清后月供归零
+    checkMilestones();             // 净资产 & 里程碑
+    checkAch();                    // 随手可查的成就（彩票净亏、住进别墅…）
+  } else if (state.phase === 'debt') {
+    debtTick();
+    queueSave();
+    return;
+  }
+
+  // 7. 待决事件：到点就弹、弹了就暂停。（放在最后：玩家看到的是最新一天的数据）
+  maybeChoice();
+
+  // 8. 无尽模式：不设时间上限。强制出口只有两个 ——
+  //    破产（tryPay 里触发 settle('bankrupt')）、摸到 ¥1 亿（checkMilestones 里触发 settle('goal')）。
+  queueSave();
+}
+
+function triggerEvent() {
+  const ev = EVENTS[Math.floor(Math.random() * EVENTS.length)];
+  if (ev.id) {
+    if (state.prices[ev.id] <= 0) return;      // 已退市：事件不再作用于它（等重新上市）
+    state.prev[ev.id] = state.prices[ev.id];
+    state.prices[ev.id] = Math.max(0.01, state.prices[ev.id] * (1 + ev.e));
+    applyFloor(ev.id);
+    const h = state.hist[ev.id]; h[h.length-1] = state.prices[ev.id];
+    addLog('【事件】' + ev.t + '（' + A_MAP[ev.id].name + ' ' + (ev.e>0?'+':'') + (ev.e*100).toFixed(1) + '%）', ev.tone);
+  } else {
+    for (const a of ASSETS) {
+      if (state.prices[a.id] <= 0) continue;   // 退市资产不参与全市场普涨普跌
+      state.prev[a.id] = state.prices[a.id];
+      state.prices[a.id] = Math.max(0.01, state.prices[a.id] * (1 + ev.e * (0.6 + Math.random()*0.8)));
+      applyFloor(a.id);
+      const h = state.hist[a.id]; h[h.length-1] = state.prices[a.id];
+    }
+    addLog('【事件】' + ev.t, ev.tone);
+  }
+  toast(ev.t, ev.tone === 'good' ? 'good' : 'bad');
+}
+
+function checkMilestones() {
+  const nw = netWorth();
+  if (nw > state.peakNet) state.peakNet = nw;
+  for (const m of CFG.MILESTONES) {
+    if (nw >= m && state.milestones.indexOf(m) === -1) {
+      state.milestones.push(m);
+      addLog('里程碑达成：净资产突破 ¥' + short(m), 'gold');
+      toast('净资产突破 ¥' + short(m), 'gold');
+      if (m >= CFG.GOAL) winGame();
+    }
+  }
+}
+
+/* =====================================================================
+   彩票 / 刮刮乐 —— 即时开奖 + 彩票店分档现货
+   ===================================================================== */
+// 各档现货的初始张数（新档开局）
+function initStock() {
+  const s = {};
+  TICKETS.forEach(t => { s[t.id] = CFG.LOTTERY_STOCK_INIT; });
+  return s;
+}
+
+// 某档现货剩余张数（自动兜底，旧档缺字段也不会炸）
+function ticketStock(t) {
+  t = t || curTicket();
+  const L = state.lottery;
+  if (!L.stock) L.stock = initStock();
+  return Math.max(0, L.stock[t.id] || 0);
+}
+
+// 某个交易日各档各自补货。库存封顶 —— 攒到上限就不再补，避免无限堆积。
+function restockLottery() {
+  const L = state.lottery;
+  if (!L.stock) L.stock = initStock();
+  for (const t of TICKETS) {
+    const add = CFG.LOTTERY_RESTOCK[t.id] || 0;
+    L.stock[t.id] = Math.min(CFG.LOTTERY_STOCK_CAP, (L.stock[t.id] || 0) + add);
+  }
+}
+
+// 当前选中的票种
+function curTicket() { return T_MAP[state.lottery.ticket] || TICKETS[0]; }
+
+function drawOne(t) {
+  for (const pr of prizesOf(t)) {
+    if (Math.random() < pr.p) return pr;
+  }
+  return null;   // 谢谢惠顾
+}
+
+// 当前票种下最多还能买几张（本档现货 + 现金双限）。现货按档独立，互不牵连
+function maxBuyable(t) {
+  t = t || curTicket();
+  const byStock = ticketStock(t);
+  const byCash = Math.floor(state.cash / t.price);
+  return Math.max(0, Math.min(byStock, byCash));
+}
+
+// 买 n 张 —— 结果此时即已确定，浮层只负责把它「刮」出来
+function scratch(n) {
+  const t = curTicket();
+  const L = state.lottery;
+  n = Math.min(n, maxBuyable(t));
+  if (n <= 0) {
+    if (ticketStock(t) <= 0) toast('「' + t.name + '」暂时缺货，明天补货 ' + (CFG.LOTTERY_RESTOCK[t.id] || 0) + ' 张', 'bad');
+    else toast('现金不足，买不起「' + t.name + '」', 'bad');
+    return null;
+  }
+  const cost = n * t.price;
+  state.cash -= cost;
+  L.stock[t.id] = ticketStock(t) - n;   // 只扣本档现货，其他面值不受影响
+  L.spent += cost;
+  L.bought += n;
+
+  const results = [];
+  let payout = 0, top = null;
+  for (let i = 0; i < n; i++) {
+    const pr = drawOne(t);
+    results.push(pr);
+    if (pr) {
+      payout += pr.amount;
+      if (typeof L.hits[pr.name] !== 'number') L.hits[pr.name] = 0;   // 兼容旧存档的中奖记录
+      L.hits[pr.name]++;
+      if (!top || pr.amount > top.amount) top = pr;
+    }
+  }
+  if (payout > 0) {
+    state.cash += payout;
+    L.won += payout;
+    if (payout > L.bestWin) L.bestWin = payout;
+  }
+  const net = payout - cost;
+  L.feed = results.slice().reverse().concat(L.feed).slice(0, 24);
+
+  const bigBar = t.price * BIG_WIN_MULT;   // 「大奖」级别以上才飘字
+  addLog('买了 ' + n + ' 张「' + t.name + '」（-¥' + money(cost,0) + '，中得 ¥' + money(payout,0) + '，' + (net >= 0 ? '净赚' : '净亏') + ' ¥' + money(Math.abs(net),0) + '）',
+         top && top.amount >= bigBar ? 'gold' : payout > 0 ? 'good' : 'bad');
+  if (top && top.amount >= bigBar) toast('！' + top.name + ' ¥' + money(top.amount,0), 'gold');
+  queueSave();
+  return { n, results, payout, cost, net, top, ticket: t };
+}
+
+function prizeLabel(amount) {
+  if (amount >= 10000000) return (amount / 10000000) + '千万';
+  if (amount >= 10000) return (amount / 10000) + '万';
+  return String(amount);
+}
+
+/* =====================================================================
+   刮刮乐浮层 —— 真实手刮（Canvas 涂层擦除）+ 一键刮开
+   ===================================================================== */
+let spSess = null;          // 当前刮奖会话
+let scratchTimers = [];
+function clearScratchTimers() {
+  scratchTimers.forEach(t => clearTimeout(t));
+  scratchTimers = [];
+}
+
+function openScratch(n) {
+  const res = scratch(n);
+  if (!res) return;
+  clearScratchTimers();
+
+  // 「再来一批」时沿用最初记下的流速，别把它覆盖成 0
+  const prevSpeed = spSess ? spSess.speedBefore : state.speed;
+
+  spSess = {
+    res,
+    idx: 0,
+    revealed: new Array(res.n).fill(false),
+    wonSoFar: 0,
+    revealing: false,
+    drawing: false,
+    lastPt: null,
+    ctx: null,
+    dpr: 1,
+    checkAt: 0,
+    speedBefore: prevSpeed,
+  };
+  state.speed = 0;      // 刮奖期间暂停时间，安心刮
+
+  const t = res.ticket;
+  $('#spSub').textContent = '「' + t.name + '」¥' + t.price + '/张 · 共 ' + res.n + ' 张 · 花费 ¥' + money(res.cost, 0);
+  $('#spBatch').hidden = res.n <= 1;
+  $('#spTotal').textContent = res.n;
+  $('#spIdx').textContent = 1;
+  $('#spWon').textContent = '¥0';
+  $('#spBar').style.width = '0%';
+
+  const resultEl = $('#spResult');
+  resultEl.className = 'sp-result';
+  resultEl.innerHTML = '';
+
+  $('#spGrid').hidden = true;
+  $('#spGrid').innerHTML = '';
+  $('#scCard').hidden = false;
+
+  $('#scratchMask').hidden = false;
+  showSingle(0);
+  refreshSpButtons();
+  renderHud();
+}
+
+/* ---- 切到第 i 张并重置涂层 ---- */
+function showSingle(i) {
+  const t = spSess.res.ticket;
+  const r = spSess.res.results[i];
+  spSess.idx = i;
+  spSess.revealing = false;
+  spSess.drawing = false;
+  spSess.lastPt = null;
+
+  const card = $('#scCard');
+  card.hidden = false;
+  card.classList.remove('pop', 'jackpot');
+
+  $('#scBrand').textContent = t.name + ' · ¥' + t.price;
+  const pz = $('#scPrize'), nt = $('#scNote');
+  if (r) {
+    pz.className = 'sc-prize ' + (r.cls === 'jackpot' ? 'jackpot' : 'win');
+    pz.textContent = '¥' + money(r.amount, 0);
+    nt.textContent = r.name;
+  } else {
+    pz.className = 'sc-prize lose';
+    pz.textContent = '谢谢惠顾';
+    nt.textContent = '下张再来';
+  }
+  initCoat(i);
+  updateBatchBar();
+  refreshSpButtons();      // 同步「还剩 N 张没刮」的按钮文案
+}
+
+/* ---- 初始化涂层 ---- */
+function initCoat(i) {
+  const card = $('#scCard'), cv = $('#scCoat');
+  // 先把涂层瞬间恢复成不透明，再画新的金属涂层。
+  // 不能只 remove('gone')：那会触发 .32s 的 opacity 0→1 渐显，而奖面文字在上一行已经写好，
+  // 于是十连抽时「刮完一张 → 下一张浮出」的瞬间能透过半透明涂层看到下一张中没中。
+  // snap 期间关掉 transition，强制回流提交 opacity:1，之后撤掉 snap 也不会再产生过渡
+  // （opacity 的值没变，CSS 不会为它起动画）。
+  cv.classList.add('snap');
+  cv.classList.remove('gone');
+  void cv.offsetWidth;
+  cv.classList.remove('snap');
+  const w = card.clientWidth || 398;
+  const h = card.clientHeight || 192;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // 只设内部像素尺寸，显示尺寸交给 CSS（width/height:100%），
+  // 这样窗口缩放 / 横竖屏切换时 canvas 不会错位
+  cv.width = Math.round(w * dpr);
+  cv.height = Math.round(h * dpr);
+
+  let ctx = null;
+  // willReadFrequently：刮擦时要反复 getImageData 估算已刮开比例，加这个提示会快很多
+  try { ctx = cv.getContext('2d', { willReadFrequently: true }); } catch (e) { ctx = null; }
+  spSess.ctx = ctx;
+  spSess.dpr = dpr;
+  if (!ctx) return;      // 无 canvas 能力（如部分无头环境）：点一下即揭晓
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.clearRect(0, 0, cv.width, cv.height);
+
+  // 金属涂层
+  const g = ctx.createLinearGradient(0, 0, cv.width, cv.height);
+  g.addColorStop(0, '#8a6f1e'); g.addColorStop(.26, '#d9b845');
+  g.addColorStop(.5, '#f7e08a'); g.addColorStop(.74, '#c9a52f');
+  g.addColorStop(1, '#7d6417');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, cv.width, cv.height);
+
+  // 斜纹
+  ctx.save();
+  ctx.globalAlpha = .15;
+  ctx.strokeStyle = '#fff6c9';
+  ctx.lineWidth = 1.5 * dpr;
+  for (let x = -cv.height; x < cv.width; x += 13 * dpr) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + cv.height, cv.height); ctx.stroke();
+  }
+  ctx.restore();
+
+  // 暗纹 ¥
+  ctx.save();
+  ctx.globalAlpha = .12;
+  ctx.fillStyle = '#4a3a09';
+  ctx.font = '700 ' + Math.round(26 * dpr) + 'px sans-serif';
+  for (let k = 0; k < 16; k++) {
+    const x = (k * 97) % Math.max(1, cv.width - 30 * dpr);
+    const y = ((k * 61) % Math.max(1, cv.height - 28 * dpr)) + 26 * dpr;
+    ctx.fillText('¥', x, y);
+  }
+  ctx.restore();
+
+  // 提示文案
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(58,44,8,.72)';
+  ctx.font = '700 ' + Math.round(15 * dpr) + 'px sans-serif';
+  ctx.fillText('用 手 指 刮 开', cv.width / 2, cv.height / 2 - 11 * dpr);
+  ctx.font = '500 ' + Math.round(10.5 * dpr) + 'px sans-serif';
+  ctx.fillStyle = 'rgba(58,44,8,.52)';
+  ctx.fillText(spSess.res.n > 1 ? ('第 ' + (i + 1) + ' / ' + spSess.res.n + ' 张') : '刮开见喜', cv.width / 2, cv.height / 2 + 12 * dpr);
+
+  // 切到擦除模式
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 30 * dpr;    // 笔刷（≈30px）：回退到上一版的粗细，手感正好
+}
+
+function coatPos(e, cv) {
+  const rc = cv.getBoundingClientRect();
+  return {
+    x: (e.clientX - rc.left) * (cv.width / rc.width),
+    y: (e.clientY - rc.top) * (cv.height / rc.height),
+  };
+}
+
+function coatStroke(x, y) {
+  const ctx = spSess && spSess.ctx;
+  if (!ctx) return;
+  ctx.beginPath();
+  const p = spSess.lastPt || { x, y };
+  ctx.moveTo(p.x, p.y);
+  ctx.lineTo(x, y);
+  ctx.stroke();
+  spSess.lastPt = { x, y };
+}
+
+// 抽样估计已刮开的比例（节流调用，避免频繁 getImageData）
+// 不传 rect 时统计整张票；传归一化区域 {x,y,w,h} 则只统计该区域。
+// 判定只关心「奖面文字区」—— 把整张票刮掉多少并不代表玩家看清了结果。
+function coatCleared(rect) {
+  const cv = $('#scCoat');
+  const ctx = spSess && spSess.ctx;
+  if (!ctx) return 1;
+  const rx = rect ? rect.x : 0, ry = rect ? rect.y : 0;
+  const rw = rect ? rect.w : 1, rh = rect ? rect.h : 1;
+  const x0 = Math.max(0, Math.min(cv.width - 1, Math.round(cv.width * rx)));
+  const y0 = Math.max(0, Math.min(cv.height - 1, Math.round(cv.height * ry)));
+  const w = Math.max(1, Math.min(cv.width - x0, Math.round(cv.width * rw)));
+  const h = Math.max(1, Math.min(cv.height - y0, Math.round(cv.height * rh)));
+  let d;
+  try { d = ctx.getImageData(x0, y0, w, h).data; }
+  catch (e) { return 1; }
+  let clear = 0, total = 0;
+  for (let i = 3; i < d.length; i += 16) {   // 每 4 像素抽样一次
+    total++;
+    // 用 128 而非 0 作阈值：抗锯齿边缘算「已刮开」，更贴近肉眼观感
+    if (d[i] < 128) clear++;
+  }
+  return total ? clear / total : 1;
+}
+
+/* ---- 完成当前张的揭晓 ---- */
+function finishCurrent() {
+  if (!spSess || spSess.revealing) return;
+  spSess.revealing = true;
+  spSess.drawing = false;
+
+  const cv = $('#scCoat'), ctx = spSess.ctx;
+  if (ctx) {     // 一把擦净剩余涂层，视觉上「揭开」
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+  }
+  cv.classList.add('gone');
+
+  const r = spSess.res.results[spSess.idx];
+  const card = $('#scCard');
+  card.classList.add('pop');
+  if (r) {
+    if (r.cls === 'jackpot') {
+      card.classList.add('jackpot');
+      $('#scFlash').classList.add('on');
+      scratchTimers.push(setTimeout(() => $('#scFlash').classList.remove('on'), 620));
+      toast('！！' + r.name + ' ¥' + money(r.amount, 0), 'gold');
+    } else if (r.amount >= spSess.res.ticket.price * BIG_WIN_MULT) {
+      toast('！' + r.name + ' ¥' + money(r.amount, 0), 'gold');
+    }
+    spSess.wonSoFar += r.amount;
+  }
+  spSess.revealed[spSess.idx] = true;
+  updateBatchBar();
+  refreshSpButtons();      // 立刻同步按钮：否则翻牌等待期里还显示着上一张的"剩余 N 张"
+
+  const isLast = spSess.idx >= spSess.res.n - 1;
+  const hold = r && r.cls === 'jackpot' ? 1800 : r ? 950 : 620;
+  scratchTimers.push(setTimeout(() => {
+    if (!spSess) return;
+    if (isLast) { finishBatch(); refreshSpButtons(); }
+    else showSingle(spSess.idx + 1);
+  }, hold));
+}
+
+function updateBatchBar() {
+  if (!spSess) return;
+  const done = spSess.revealed.filter(Boolean).length;
+  $('#spIdx').textContent = Math.min(spSess.idx + 1, spSess.res.n);
+  $('#spBar').style.width = (done / spSess.res.n * 100) + '%';
+  $('#spWon').textContent = '¥' + money(spSess.wonSoFar, 0);
+}
+
+/* ---- 一键刮开全部：切网格 + 快速翻牌 ---- */
+function revealAll() {
+  if (!spSess) return;
+  // 只有一张时，切网格反而多余，直接揭晓
+  if (spSess.res.n === 1) { finishCurrent(); return; }
+  clearScratchTimers();
+  spSess.revealing = false;
+  spSess.drawing = false;
+
+  const res = spSess.res;
+  for (let i = 0; i < res.n; i++) {
+    if (!spSess.revealed[i]) {
+      spSess.revealed[i] = true;
+      if (res.results[i]) spSess.wonSoFar += res.results[i].amount;
+    }
+  }
+
+  $('#scCard').hidden = true;
+  const grid = $('#spGrid');
+  grid.hidden = false;
+  grid.innerHTML = res.results.map(r =>
+    '<div class="tk">' +
+      '<div class="tk-inner">' +
+        '<div class="tk-face tk-conceal">?</div>' +
+        '<div class="tk-face tk-reveal' + (r ? ' win' : '') + '">' +
+          (r ? '¥' + prizeLabel(r.amount) : '未中') +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  ).join('');
+
+  const els = grid.querySelectorAll('.tk');
+  const stagger = Math.max(16, Math.min(70, 1600 / res.n));
+  els.forEach((el, i) => {
+    scratchTimers.push(setTimeout(() => el.classList.add('revealed'), 40 + i * stagger));
+  });
+  scratchTimers.push(setTimeout(() => {
+    if (!spSess) return;
+    finishBatch();
+    refreshSpButtons();
+  }, 40 + res.n * stagger + 300));
+
+  updateBatchBar();
+}
+
+/* ---- 批次结算面板 ---- */
+function finishBatch() {
+  if (!spSess) return;
+  const res = spSess.res;
+  const net = res.payout - res.cost;
+  const netCls = net > 0 ? 'up' : net < 0 ? 'down' : 'flat';
+  const netTxt = (net >= 0 ? '净赚' : '净亏') + ' ¥' + money(Math.abs(net), 0);
+  const el = $('#spResult');
+  el.innerHTML =
+    '<div>共刮 ' + res.n + ' 张 · 中得 <span class="big">¥' + money(res.payout, 0) + '</span></div>' +
+    '<div><span class="' + netCls + '">' + netTxt + '</span></div>' +
+    (res.top
+      ? '<div style="color:var(--gold);font-size:11px;opacity:.85">最高 ' + res.top.name + ' ¥' + money(res.top.amount, 0) + '</div>'
+      : '<div style="font-size:11px;opacity:.7">这批全都没中</div>');
+  el.classList.add('show');
+  render();
+}
+
+/* ---- 底部按钮 ----
+   买定离手：票一旦买下，钱已扣、奖已定，就只有一个结局 —— 全部刮开。
+   所以本批没刮完时不给「收手」，避免"我刮了 1 张就关掉，剩下 9 张去哪了"。
+   本批刮完后给「再来 N 张」—— N 就是上一批的张数（买 1 张就再来 1 张，买 10 张就再来 10 张），
+   想换个数量就回彩票页重挑，不在结果页里替玩家改数。 */
+function refreshSpButtons() {
+  const btn = $('#spAll'), closeBtn = $('#spClose');
+  if (!btn || !spSess) return;
+  const res = spSess.res;
+  const left = spSess.revealed.filter(x => !x).length;
+  const done = left === 0;
+
+  // 无 canvas 能力时（极少数环境）保留退出口，避免卡死
+  closeBtn.hidden = !done && !!spSess.ctx;
+
+  if (done) {
+    const t = res.ticket;
+    // 重复上一批的张数：买 10 张就「再来 10 张」，买 1 张就「再来一张」。
+    // 现货/现金不够时退到当前买得起的张数，一张都买不起才禁用。
+    const can = Math.min(res.n, maxBuyable(t));
+    if (can >= 1) {
+      btn.disabled = false;
+      btn.dataset.mode = 'again';
+      btn.dataset.n = String(can);
+      btn.innerHTML = (can === 1 ? '再来一张' : '再来 ' + can + ' 张') +
+        ' <small style="opacity:.6;font-size:10px">¥' + money(can * t.price, 0) + '</small>';
+    } else {
+      btn.disabled = true;
+      btn.dataset.mode = '';
+      btn.dataset.n = '';
+      btn.innerHTML = ticketStock(t) <= 0 ? '本档售罄' : '现金不足';
+    }
+  } else {
+    btn.disabled = false;
+    btn.dataset.mode = 'all';
+    btn.innerHTML = res.n > 1 ? ('一键刮开剩余 ' + left + ' 张') : '直接揭晓';
+  }
+}
+
+function closeScratch() {
+  // 买定离手：本批还有没刮开的票，就不给走（钱已扣、奖已定，只剩"揭晓"这一件事）
+  if (spSess && spSess.ctx && !spSess.revealed.every(Boolean)) {
+    const left = spSess.revealed.filter(x => !x).length;
+    toast(spSess.res.n > 1 ? ('还剩 ' + left + ' 张没刮开，先刮完再走') : '这张还没刮开呢', 'bad');
+    return;
+  }
+  clearScratchTimers();
+  $('#scratchMask').hidden = true;
+  if (spSess) state.speed = spSess.speedBefore;   // 恢复刮奖前的时间流速
+  spSess = null;
+  renderHud();
+  render();
+}
+
+/* =====================================================================
+   交易
+   ===================================================================== */
+function buyAsset(id, qty) {
+  const a = A_MAP[id], p = state.prices[id];
+  if (qty <= 0) return;
+  if (p <= 0) { toast('「' + a.name + '」已退市，等它重新上市', 'bad'); return; }
+  const cost = p * qty;
+  /* ★ 容差 1e-6：调用方常常用 `cash / price` 算份数（"全部买入"），
+     浮点乘除回来会比 cash 大一丁点（如 15000.0000000002 > 15000），
+     于是"梭哈"被自己的浮点误差拒绝 —— 标定时表现为 1/3 的样本
+     一份都没买到，白白污染了几轮破产率数据。 */
+  if (cost > state.cash + 1e-6) { toast('现金不足', 'bad'); return; }
+  const oldQty = state.hold[id], oldCost = state.avg[id] * oldQty;
+  state.hold[id] = oldQty + qty;
+  state.avg[id] = (oldCost + cost) / state.hold[id];
+  state.cash = Math.max(0, state.cash - cost);
+  state.trades++;
+  addLog('买入 ' + qty.toFixed(2) + ' 份 ' + a.name + '（-¥' + money(cost, 0) + '）', '');
+  queueSave();
+}
+function sellAsset(id, qty) {
+  const a = A_MAP[id], p = state.prices[id];
+  if (qty <= 0 || state.hold[id] <= 0) return;
+  qty = Math.min(qty, state.hold[id]);
+  const gain = p * qty;
+  const profit = (p - state.avg[id]) * qty;
+  state.hold[id] -= qty;
+  if (state.hold[id] < 1e-9) { state.hold[id] = 0; state.avg[id] = 0; }
+  state.cash += gain;
+  state.trades++;
+  addLog('卖出 ' + qty.toFixed(2) + ' 份 ' + a.name + '（+¥' + money(gain, 0) + '，' + (profit>=0?'盈利':'亏损') + ' ¥' + money(Math.abs(profit),0) + '）', profit >= 0 ? 'good' : 'bad');
+  if (profit >= 50000) unlock('big_trade');
+  queueSave();
+}
+
+/* =====================================================================
+   杠杆合约 —— 做多 / 做空 / 爆仓
+   为什么单独做一套而不是扩展 hold：现货那套账（hold / avg / cash）已经被
+   生活费扣款、破产清算、自动变卖三处逻辑依赖，动它会连锁崩。
+   仓位用独立数组 state.pos 表示，只在 netWorth() 里加一项，其余一概不碰。
+   规则：
+     · 开仓花 margin 现金，控制 margin × 倍数 的名义市值
+     · 价值 = margin + 名义 × 方向 ×（现价/开仓价 − 1）；归零即爆仓、保证金全损
+     · 随时可平仓，按当时价值退回现金
+     · 标的退市 = 跌 100%：多头归零爆仓，空头暴赚（这才是"做空"的意义）
+   ===================================================================== */
+function openPos(asset, dir, lev, margin) {
+  const a = A_MAP[asset], p = state.prices[asset];
+  if (!(p > 0)) { toast('「' + a.name + '」已退市，开不了仓', 'bad'); return false; }
+  margin = Math.min(margin, state.cash);
+  if (margin < CFG.POS_MIN) { toast('保证金至少要 ¥' + CFG.POS_MIN, 'bad'); return false; }
+  if (!state.pos) state.pos = [];
+  const q = {
+    id: state.posSeq++,
+    asset, dir, lev,
+    notional: margin * lev,
+    margin,
+    fee: 0,          // 累计已付的融资成本（从保证金垫子里扣，见 posBuffer）
+    entry: p,
+    day: state.day,
+  };
+  state.pos.push(q);
+  state.cash -= margin;
+  state.trades++;
+  const ds = dir > 0 ? '多' : '空';
+  addLog('开仓 ' + lev + 'x ' + ds + ' · ' + a.name + '（保证金 ¥' + money(margin,0) + '，名义 ¥' + money(q.notional,0) + '，爆仓价 ¥' + posLiqPrice(q).toFixed(2) + '）', dir > 0 ? 'good' : 'bad');
+  toast('已开仓：' + lev + 'x ' + ds + ' ' + a.name + ' · 爆仓价 ¥' + posLiqPrice(q).toFixed(2), dir > 0 ? 'good' : 'bad');
+  queueSave();
+  return true;
+}
+
+function closePos(id, quiet) {
+  const i = (state.pos || []).findIndex(q => q.id === id);
+  if (i < 0) return 0;
+  const q = state.pos[i];
+  const val = posValue(q);
+  const pl = val - q.margin;
+  state.cash += val;
+  state.pos.splice(i, 1);
+  state.trades++;
+  const a = A_MAP[q.asset], ds = q.dir > 0 ? '多' : '空';
+  addLog('平仓 ' + q.lev + 'x ' + ds + ' · ' + a.name + '（保证金 ¥' + money(q.margin,0) + ' → ¥' + money(val,0) + '，' + (pl>=0?'盈利':'亏损') + ' ¥' + money(Math.abs(pl),0) + '）', pl >= 0 ? 'good' : 'bad');
+  if (!quiet) toast('平仓 ' + a.name + '：' + (pl>=0?'+':'') + '¥' + money(Math.abs(pl),0), pl >= 0 ? 'good' : 'bad');
+  if (pl >= 100000) unlock('lev_win');
+  queueSave();
+  return val;
+}
+
+function closeAllPos(quiet) {
+  const ids = (state.pos || []).map(q => q.id);
+  let sum = 0;
+  for (const id of ids) sum += closePos(id, true);
+  if (!quiet && ids.length) toast('全部平仓，退回 ¥' + money(sum, 0), '');
+  return sum;
+}
+
+/* 融资成本：每天按名义市值从保证金垫子里抽一次。
+   没有它，杠杆就是印钞机 —— 四类资产的漂移本来就是正的，乘以倍数等于白拿，
+   最优解会退化成"永远满杠杆"，整个游戏就没有判断了。
+   抽成"从保证金扣"而不是"从现金扣"，是为了让风险留在仓位内部：
+   垫子被抽穿 → 下一句 checkBlowups 自然强平，不需要额外的催缴流程。 */
+function chargeFinancing() {
+  if (!state.pos || !state.pos.length) return 0;
+  let total = 0;
+  for (const q of state.pos) {
+    const fee = q.notional * CFG.POS_RATE;
+    q.fee = (q.fee || 0) + fee;
+    total += fee;
+  }
+  return total;
+}
+
+// 爆仓检查：价值归零即强制平仓、保证金全损。每 tick 紧跟价格与融资成本之后调用。
+function checkBlowups() {
+  if (!state.pos || !state.pos.length) return false;
+  let burned = 0, n = 0;
+  for (let i = state.pos.length - 1; i >= 0; i--) {
+    const q = state.pos[i];
+    if (posValue(q) <= 0.01) {
+      burned += q.margin; n++;
+      // 区分死因：被行情打倒，还是被融资成本一天天磨穿 —— 后者玩家常常莫名其妙
+      const byFee = (q.fee || 0) >= q.margin * 0.5;
+      addLog('【爆仓】' + A_MAP[q.asset].name + ' ' + q.lev + 'x' + (q.dir>0?'多':'空')
+        + ' 被强制平仓，保证金 ¥' + money(q.margin,0) + ' 全损'
+        + (byFee ? '（累计融资成本 ¥' + money(q.fee,0) + ' 已超过本金一半 —— 杠杆拿太久就是这个下场）'
+                 : '（行情反向）'), 'bad');
+      state.pos.splice(i, 1);
+    }
+  }
+  if (n > 0) {
+    unlock('blowup');
+    toast('！爆仓 ' + n + ' 个仓位 · 损失保证金 ¥' + money(burned, 0), 'bad');
+    return true;
+  }
+  return false;
+}
+
+/* =====================================================================
+   住房 —— 租房 / 全款 / 贷款，房价走独立周期
+   规则要点：任何时刻玩家都有一处住所（最低是合租单间），
+   所以「卖房」不会让人流落街头 —— 卖掉即自动落回合租。
+   ===================================================================== */
+// 基准生活费（随天数缓慢上涨，不含住房）
+function baseCost() {
+  return CFG.BASE_COST + Math.floor(state.day / CFG.COST_STEP) * CFG.COST_STEP_ADD;
+}
+// 某档房屋当日房价（含房价指数）
+function housePrice(id, s) {
+  s = s || state;
+  const h = H_MAP[id];
+  if (!h || h.onlyRent) return 0;
+  return h.price * s.houseIdx;
+}
+// 当前住所的每日住房支出：租房 = 租金；自有有贷 = 月供；自有无贷 = 0
+function homeDailyCost() {
+  const H = state.home;
+  if (!H) return 0;
+  if (H.owned) return H.pay > 0 ? H.pay : 0;
+  const h = H_MAP[H.id];
+  return h ? h.rent : 0;
+}
+// 一天的全部硬支出 = 生活费 + 房租 / 月供
+/* 日耗 = 基础生活费（随天数上涨）+ 住房开销 + 事件留下的永久增减（state.costBias）。
+   costBias 是「房东涨租」「猎头加薪」这类抉择的沉淀物 —— 它们不该随着天数被冲掉。 */
+function dailyCost() {
+  const raw = baseCost() + homeDailyCost() + (state.costBias || 0);
+  return state.austere ? raw * CFG.AUSTERITY_K : raw;   // 节衣缩食（见 CFG 注释）
+}
+/* 节衣缩食的进出判定。每 tick 在扣钱之前跑一次。
+   滞回设计：进线 ¥6,000、出线 ¥9,000 —— 如果同一条线，玩家会在阈值上
+   反复横跳（省钱 → 净资产回升 → 恢复开销 → 又跌破 → 又省钱），日志瞬间刷屏。 */
+function checkAusterity() {
+  const nw = netWorth();
+  if (!state.austere && nw < CFG.AUSTERITY_LINE) {
+    state.austere = true;
+    state.cost = dailyCost();
+    addLog('【节衣缩食】净资产跌破 ¥' + short(CFG.AUSTERITY_LINE) + '，开始省吃俭用 —— '
+      + '日耗降到 ' + Math.round(CFG.AUSTERITY_K * 100) + '%。'
+      + '但光靠省是省不回本金的：想翻身得动手（换仓 / 跌时补 / 上杠杆）。', 'bad');
+    toast('节衣缩食 · 日耗 ×' + CFG.AUSTERITY_K, 'bad');
+  } else if (state.austere && nw > CFG.AUSTERITY_OUT) {
+    state.austere = false;
+    state.cost = dailyCost();
+    addLog('【缓过来了】净资产回到 ¥' + short(CFG.AUSTERITY_OUT) + ' 以上，恢复正常开销', 'gold');
+    toast('恢复正常开销', 'gold');
+  }
+}
+/* 事件留下的日耗偏移必须封顶（±CFG.COST_BIAS_CAP）。
+   原因见 CFG.COST_BIAS_CAP 的注释：日耗是每天硬扣的固定成本，
+   偏移会永久累计，不封顶的话几轮「房东涨租」就能把日耗顶到翻倍，
+   对生存率的打击是超线性的（标定实测破产率 0% → 76%）。
+   返回"实际生效的增量"，让调用方能把"被上限吃掉的部分"如实写进结算文案。 */
+function addCostBias(dv) {
+  const before = state.costBias || 0;
+  state.costBias = Math.max(-CFG.COST_BIAS_CAP, Math.min(CFG.COST_BIAS_CAP, before + dv));
+  state.cost = dailyCost();
+  return state.costBias - before;
+}
+
+/* =====================================================================
+   工作 / 经营 —— 逻辑层
+   ===================================================================== */
+// 当前职位的基础日薪（不含加班加成）：pay × (1 + grow×(level−1))
+function jobBasePay(J) {
+  J = J || state.job; if (!J) return 0;
+  const jd = JOB_MAP[J.id]; if (!jd) return 0;
+  return jd.pay * (1 + jd.grow * (J.level - 1));
+}
+// 今天实际到账的工资（加班时 ×OT_MUL）
+function jobDailyPay(J) {
+  J = J || state.job; if (!J) return 0;
+  return jobBasePay(J) * (J.overtime ? CFG.OT_MUL : 1);
+}
+function jobTitle(J) {
+  J = J || state.job; if (!J) return '无业';
+  const jd = JOB_MAP[J.id]; if (!jd) return '无业';
+  return jd.rank[Math.min(J.level, jd.levels) - 1] || jd.name;
+}
+// 应聘门槛：累计上班天数
+function canApply(jd) { return (state.workDays || 0) >= jd.req; }
+
+/* 店铺的每日净利。
+   自营规则：人只有一个 ——
+     · 在职（有正职）→ 所有店都得雇人看：净利 = 营收 − 人力成本
+     · 无业          → 最赚钱的那家自己看（拿全额营收，省下它那份工资），其余仍要雇人
+   人力成本还带"管理半径"：第 2 家起每多一家雇人店，这家的人力成本再上浮 15%
+   （家里店多了，得请更靠谱的人替你盯着）。
+   这道取舍把"要不要辞职创业"变成真取舍：辞职能省下一整份工资，
+   但没了工资收入 —— 而工资恰恰是前期唯一的稳定现金流。 */
+function shopLedger() {
+  const list = state.shops || [];
+  const selfId = selfRunShopId();
+  const out = [];
+  let hired = 0;
+  for (const s of list) {
+    const d = SHOP_MAP[s.id];
+    const self = (s.id === selfId);
+    const mgt = self ? 1 : (1 + CFG.SHOP_MGT_STEP * hired);
+    out.push({ id: s.id, self, mgt, net: self ? d.profit : d.profit - d.wage * mgt });
+    if (!self) hired++;
+  }
+  return out;
+}
+function shopDailyProfit() {
+  return shopLedger().reduce((sum, r) => sum + r.net, 0);
+}
+// 当前亲自打理的是哪一家（没有则为 null）—— UI 要用它标出"这家是全额的"
+function selfRunShopId() {
+  if (state.job) return null;
+  const list = state.shops || [];
+  if (!list.length) return null;
+  let best = list[0];
+  for (const s of list) if (SHOP_MAP[s.id].wage > SHOP_MAP[best.id].wage) best = s;
+  return best.id;
+}
+// 昨日总收入 = 工资 + 店铺利润
+function dailyIncome() { return jobDailyPay() + shopDailyProfit(); }
+
+/* 每日入账（tick 第 6 步、扣日耗之前调用）。
+   顺序很重要：先入账再扣钱，当天的工资才能直接抵掉当天的开销 ——
+   否则会出现"明明在上班，却因为先扣了生活费而进债务模式"的鬼故事。 */
+function accrueIncome() {
+  let inc = 0;
+  const J = state.job;
+  if (J) {
+    state.workDays = (state.workDays || 0) + 1;
+    if (J.sickLeft > 0) {
+      // 累倒停薪中：没有工资，但工龄照算
+      J.sickLeft--;
+      if (J.sickLeft === 0) { addLog('身体养好了，回去上班', 'gold'); toast('复工上班', 'gold'); }
+    } else {
+      inc += jobDailyPay(J);
+      if (J.overtime) {
+        J.fatigue = Math.min(100, (J.fatigue || 0) + CFG.OT_FATIGUE);
+        if (J.fatigue >= 100) {
+          J.fatigue = 0;
+          J.sickLeft = CFG.OT_SICK_DAYS;
+          state.cash = Math.max(0, state.cash - CFG.OT_SICK_COST);
+          addLog('【累倒】连轴加班把身体熬垮了 —— 医药费 ¥' + CFG.OT_SICK_COST
+            + '，还得停薪 ' + CFG.OT_SICK_DAYS + ' 天', 'bad');
+          toast('加班累倒 · 停薪 ' + CFG.OT_SICK_DAYS + ' 天', 'bad');
+        }
+      } else if (J.fatigue > 0) {
+        J.fatigue = Math.max(0, J.fatigue - CFG.OT_RECOVER);
+      }
+    }
+    // 工龄够了自动升职加薪（挂机式：玩家不用管，它自己会发生）
+    J.exp = (J.exp || 0) + 1;
+    const jd = JOB_MAP[J.id];
+    while (jd && J.level < jd.levels && J.exp >= jd.upDays * J.level) {
+      J.level++;
+      addLog('【升职】' + jd.name + ' → ' + jobTitle(J)
+        + '，日薪涨到 ¥' + money(jobBasePay(J), 0), 'gold');
+      toast('升职加薪 · ' + jobTitle(J), 'gold');
+      if (J.level >= jd.levels) unlock('promoted');
+      checkAch();
+    }
+  }
+  inc += shopDailyProfit();
+  state.income = inc;
+  if (inc > 0) state.cash += inc;
+  return inc;
+}
+
+/* 应聘 / 跳槽。跳槽 = 直接换岗位，本岗位工龄清零（level 从 1 重新开始）——
+   现实里跳槽多半也是重新算资历，而新岗位起薪本来就高，所以不亏。 */
+function takeJob(id) {
+  const jd = JOB_MAP[id];
+  if (!jd) return false;
+  if ((state.workDays || 0) < jd.req) {
+    toast('还差 ' + Math.ceil(jd.req - (state.workDays || 0)) + ' 天工作经验才能应聘', 'bad');
+    return false;
+  }
+  if (state.job && state.job.id === id) { toast('你已经在做这份工作了', 'bad'); return false; }
+  const isSwitch = !!state.job;
+  state.job = { id, level:1, exp:0, fatigue:0, overtime:false, sickLeft:0, taken: state.day };
+  addLog((isSwitch ? '【跳槽】' : '【入职】') + '你成了「' + jd.name
+    + '」，日薪 ¥' + money(jobBasePay(state.job), 0), 'gold');
+  toast((isSwitch ? '跳槽成功 · ' : '入职 · ') + jd.name, 'gold');
+  checkAch();       // 「打工人」看的是累计上班天数（500 天），不是"入职即得"
+  queueSave();
+  return true;
+}
+function quitJob() {
+  if (!state.job) return;
+  const nm = JOB_MAP[state.job.id].name;
+  state.job = null;
+  addLog('【辞职】你辞掉了「' + nm + '」的工作', '');
+  toast('已辞职', '');
+  checkAch();
+  queueSave();
+}
+// 加班开关：多赚 50%，但疲劳一天天累积，满 100 就累倒停薪
+function setOvertime(on) {
+  if (!state.job) return;
+  state.job.overtime = !!on;
+  queueSave();
+}
+
+/* 开店。每档最多 1 家，钱从现金里扣、直接变成"每天固定收益"的资产。 */
+function openShop(id) {
+  const sh = SHOP_MAP[id];
+  if (!sh) return false;
+  if ((state.shops || []).some(s => s.id === id)) { toast('这家店你已经有了', 'bad'); return false; }
+  if (state.cash < sh.cost) { toast('现金不足，需要 ¥' + money(sh.cost, 0), 'bad'); return false; }
+  state.cash -= sh.cost;
+  state.shops.push({ id, day: state.day });
+  addLog('【开店】「' + sh.name + '」开张 —— 投入 ¥' + money(sh.cost, 0)
+    + '，日营收 ¥' + money(sh.profit, 0) + ' − 人工 ¥' + money(sh.wage, 0)
+    + ' → 雇人净赚 ¥' + money(sh.profit - sh.wage, 0) + '/天'
+    + '（自己看着拿全额，约 ' + Math.round(sh.cost / sh.profit) + ' 天回本）', 'gold');
+  toast('「' + sh.name + '」开张了', 'gold');
+  checkAch();
+  queueSave();
+  return true;
+}
+// 转让（六折回血）：给玩家一个"投错了能退"的出口，避免一次误点锁死整局
+function sellShop(id) {
+  const i = (state.shops || []).findIndex(s => s.id === id);
+  if (i < 0) return;
+  const sh = SHOP_MAP[state.shops[i].id];
+  const back = sh.cost * 0.6;
+  state.shops.splice(i, 1);
+  state.cash += back;
+  addLog('【转让】把「' + sh.name + '」转手，收回 ¥' + money(back, 0) + '（六折）', '');
+  toast('「' + sh.name + '」已转让', '');
+  checkAch();
+  queueSave();
+}
+
+// 房产净值：自有房按当日市价计入净资产，扣掉剩余贷款
+function houseEquity(s) {
+  s = s || state;
+  const H = s.home;
+  if (!H || !H.owned) return 0;
+  return housePrice(H.id, s) - H.loan;
+}
+// 等额本息：给定贷款额，算出每个交易日的月供
+function loanDaily(L) {
+  const r = CFG.HOUSE_RATE, n = CFG.HOUSE_TERM;
+  if (L <= 0) return 0;
+  if (r <= 0) return L / n;
+  return L * r / (1 - Math.pow(1 + r, -n));
+}
+// 住所显示名（带 租 / 自有 标记）
+function homeLabel(s) {
+  s = s || state;
+  const H = s.home;
+  const h = H_MAP[H.id] || HOUSES[0];
+  return h.name + (H.owned ? '（自有）' : '（租）');
+}
+
+/* 房价指数：独立于股市的一套慢周期 —— 长期慢牛 + 日波动 + 偶发泡沫破裂/暴涨。
+   泡沫破裂就是"前期咬牙上车、后期房价反而跌了"这个剧本的来源。 */
+function tickHousePrice() {
+  let idx = state.houseIdx;
+  idx *= (1 + CFG.HOUSE_DRIFT + CFG.HOUSE_VOL * randn());
+  if (Math.random() < CFG.HOUSE_BUBBLE_P) {
+    const d = 0.80 + Math.random() * 0.12;                 // 单日 -8% ~ -20%
+    idx *= d;
+    addLog('【楼市】房价指数单日 ' + ((d - 1) * 100).toFixed(1) + '%', 'bad');
+    toast('楼市大跌 ' + ((d - 1) * 100).toFixed(0) + '%', 'bad');
+  } else if (Math.random() < CFG.HOUSE_BOOM_P) {
+    const u = 1.06 + Math.random() * 0.10;                 // 单日 +6% ~ +16%
+    idx *= u;
+    addLog('【楼市】房价指数单日 +' + ((u - 1) * 100).toFixed(1) + '%', 'gold');
+    toast('楼市大涨 +' + ((u - 1) * 100).toFixed(0) + '%', 'gold');
+  }
+  idx = Math.max(CFG.HOUSE_IDX_LO, Math.min(CFG.HOUSE_IDX_HI, idx));
+  state.houseIdx = idx;
+  const h = state.houseHist;
+  h.push(idx);
+  if (h.length > 48) h.shift();
+}
+
+/* 卖出自有房：按当日市价扣手续费，先还银行，剩下的归你。
+   返回净得现金；若「资不抵贷」（卖价还不够还贷）则返回 null，表示卖不掉。
+   卖出后自动落回合租 —— 保证永远有地方住。 */
+function sellHome(quiet) {
+  const H = state.home;
+  if (!H.owned) return 0;
+  const name = (H_MAP[H.id] || HOUSES[0]).name;
+  const price = housePrice(H.id);
+  const net = price * (1 - CFG.HOUSE_FEE) - H.loan;
+  if (net < 0) return null;
+  state.cash += net;
+  if (!quiet) {
+    const pl = net - H.paid;
+    addLog('卖出「' + name + '」净得 ¥' + money(net, 0) + '（首付 ¥' + money(H.paid, 0) + '，'
+      + (pl >= 0 ? '赚' : '亏') + ' ¥' + money(Math.abs(pl), 0) + '）', pl >= 0 ? 'gold' : 'bad');
+  }
+  H.id = 'share'; H.owned = false; H.paid = 0; H.loan = 0; H.pay = 0; H.loanLeft = 0;
+  state.cost = dailyCost();
+  return net;
+}
+
+/* 断供收房：银行把房子拿走抵债，首付与已还款全部打水漂，人落回合租。 */
+function repossess() {
+  const H = state.home;
+  const name = (H_MAP[H.id] || HOUSES[0]).name;
+  addLog('【断供】月供还不上，银行收走「' + name + '」—— 首付 ¥' + money(H.paid, 0) + ' 与已还款全部打水漂', 'bad');
+  toast('！断供 · 房子被银行收走', 'bad');
+  H.id = 'share'; H.owned = false; H.paid = 0; H.loan = 0; H.pay = 0; H.loanLeft = 0;
+  state.cost = dailyCost();
+}
+
+/* 租房（可换成任意档，含合租）。若当前是自有房，先卖掉再租。 */
+function rentHome(id) {
+  const h = H_MAP[id];
+  if (!h) return false;
+  if (state.home.owned) {
+    const net = sellHome(false);
+    if (net === null) { toast('资不抵贷：房子卖了还不够还银行，先别换', 'bad'); return false; }
+  }
+  state.home.id = id;
+  state.home.owned = false;
+  state.home.loan = 0; state.home.pay = 0; state.home.loanLeft = 0; state.home.paid = 0;
+  state.cost = dailyCost();
+  addLog('搬进「' + h.name + '」（租金 ¥' + h.rent + '/天）', '');
+  toast('已搬进「' + h.name + '」', 'good');
+  queueSave();
+  return true;
+}
+
+/* 买房：useLoan = true 走首付 + 月供，false 全款。
+   换房也是一步到位：先把旧房卖掉（净得可抵新房款），再买新的。 */
+function buyHome(id, useLoan) {
+  const h = H_MAP[id];
+  if (!h || h.onlyRent) return false;
+  const H = state.home;
+  const price = housePrice(id);
+  const down = useLoan ? price * CFG.HOUSE_DOWN : price;
+
+  // 旧房能净得多少（先算，不算入现金，避免中途状态被改）
+  let extra = 0;
+  if (H.owned) {
+    extra = housePrice(H.id) * (1 - CFG.HOUSE_FEE) - H.loan;
+    if (extra < 0) { toast('资不抵贷：旧房卖了还不够还银行，先别换', 'bad'); return false; }
+  }
+  if (state.cash + extra + 0.005 < down) {
+    toast((useLoan ? '首付' : '全款') + '不够，还差 ¥' + money(down - state.cash - extra, 0), 'bad');
+    return false;
+  }
+
+  if (H.owned) sellHome(true);       // 先变现旧房（quiet：下面统一记一条完整日志）
+  state.cash -= down;
+  H.id = id;
+  H.owned = true;
+  H.paid = down;
+  if (useLoan) {
+    H.loan = price - down;
+    H.pay = loanDaily(H.loan);
+    H.loanLeft = CFG.HOUSE_TERM;
+  } else {
+    H.loan = 0; H.pay = 0; H.loanLeft = 0;
+  }
+  state.cost = dailyCost();
+  addLog('买下「' + h.name + '」' + (useLoan
+      ? '（首付 ¥' + money(down, 0) + '，贷款 ¥' + money(H.loan, 0) + '，日供 ¥' + money(H.pay, 0) + '）'
+      : '（全款 ¥' + money(down, 0) + '）'), 'gold');
+  toast('已买下「' + h.name + '」', 'gold');
+  queueSave();
+  return true;
+}
+
+/* 扣掉当日硬支出（生活费 + 房租/月供）。
+   顺序：现金 → 自动变卖金融持仓 → 仍不够且背着房贷就银行收房 → 还不行才破产。
+   返回 true = 付清；false = 已进入债务模式。 */
+function payDailyCost() {
+  state.cost = dailyCost();
+  if (tryPay()) return true;
+  if (state.home.owned && state.home.loan > 0) {
+    repossess();                 // 房子没了，月供也就没了，成本降下来再试
+    if (tryPay()) return true;
+  }
+  const need = Math.max(0, state.cost - state.cash);
+  state.cash = 0;
+  enterDebt(need);
+  return false;
+}
+// 月供逐日摊销：当天利息先扣，剩下的冲减本金；还满期数/还清后月供归零
+function amortize() {
+  const H = state.home;
+  if (!H.owned || H.loan <= 0) return;
+  const interest = H.loan * CFG.HOUSE_RATE;
+  H.loan = Math.max(0, H.loan - Math.max(0, H.pay - interest));
+  H.loanLeft = Math.max(0, H.loanLeft - 1);
+  if (H.loan <= 0.01 || H.loanLeft <= 0) {
+    H.loan = 0; H.pay = 0; H.loanLeft = 0;
+    addLog('房贷还清！「' + (H_MAP[H.id] || HOUSES[0]).name + '」从此零月供', 'gold');
+    toast('房贷还清 · 从此零月供', 'gold');
+    state.cost = dailyCost();
+  }
+}
+
+// 尝试支付 state.cost：现金不足则自动变卖金融持仓（不动房子）
+function tryPay() {
+  if (state.cash < state.cost) {
+    let need = state.cost - state.cash;
+    for (const a of ASSETS) {
+      if (need <= 0) break;
+      const p = state.prices[a.id];
+      const hv = state.hold[a.id] * p;
+      if (hv <= 0.0001) continue;
+      if (hv <= need) {
+        need -= hv; state.cash += hv;
+        state.hold[a.id] = 0; state.avg[a.id] = 0;
+        addLog('自动变卖 ' + a.name + ' 抵日用', 'bad');
+      } else {
+        state.hold[a.id] -= need / p;
+        state.cash += need; need = 0;
+        addLog('自动变卖部分 ' + a.name + ' 抵日用', 'bad');
+      }
+    }
+    /* 现货卖光了还不够，就轮到杠杆仓位 —— 券商按"权益最小的先减仓"。
+       这一步不能省：否则「把钱全押进杠杆」会变成一条必死路径 ——
+       生活费扣不动仓位，玩家只能一路欠到破产，而他其实什么都没做错。
+       两个细节（标定时踩出来的）：
+         · 挑权益最小的先动，是为了尽量不砍那个正在赚钱的大仓位；
+         · 只减掉"刚好够用"的那一部分，与现货的「自动变卖部分」保持一致。
+           整仓平掉会把一个本来能自己养活自己的仓位一刀砍死 ——
+           实测整仓平掉时，"持有·基金2x"的破产率是 100%（现货只有 11%）。 */
+    while (need > 0.0001 && state.pos && state.pos.length) {
+      let mi = -1, mv = Infinity;
+      for (let i = 0; i < state.pos.length; i++) {
+        const v = posValue(state.pos[i]);
+        if (v > 0.0001 && v < mv) { mv = v; mi = i; }
+      }
+      if (mi < 0) break;
+      const q = state.pos[mi];
+      const ds = q.dir > 0 ? '多' : '空';
+      if (mv <= need + 0.0001) {                 // 整个仓位都不够抵：平掉再找下一个
+        state.pos.splice(mi, 1);
+        state.cash += mv; need -= mv;
+        addLog('自动平仓 ' + q.lev + 'x ' + ds + ' ' + A_MAP[q.asset].name
+          + ' 抵日用（退回 ¥' + money(mv,0) + '）', 'bad');
+      } else {                                   // 只减仓 need/mv 的比例（三项同比例缩放，权益按比例下降）
+        const f = need / mv;
+        q.margin *= (1 - f); q.notional *= (1 - f); q.fee = (q.fee || 0) * (1 - f);
+        state.cash += need;
+        need = 0;
+        addLog('自动减仓 ' + q.lev + 'x ' + ds + ' ' + A_MAP[q.asset].name
+          + ' 抵日用（减掉 ' + (f * 100).toFixed(0) + '%，退回 ¥' + money(mv * f, 0) + '）', 'bad');
+      }
+    }
+    if (need > 0.0001) return false;
+  }
+  state.cash -= state.cost;
+  if (state.cash < 0) state.cash = 0;
+  return true;
+}
+
+/* =====================================================================
+   待决事件（抉择）—— 触发即暂停，不选完不能继续
+   ===================================================================== */
+function shuffledPool(pool) {
+  const a = pool.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+// 事件出现的条件（每个事件自己声明，比如"必须有加密币持仓"才会遇到挤兑）
+function evCondOk(c) {
+  if (!c) return true;
+  if (c.minDay && state.day < c.minDay) return false;
+  if (c.minCash && state.cash < c.minCash) return false;
+  if (c.minNet && netWorth() < c.minNet) return false;
+  if (c.rentedOnly && state.home.owned) return false;
+  if (c.notOwned && state.home.owned) return false;
+  if (c.hasJob && !state.job) return false;      // 与工作绑定的事件：必须「在职」
+  if (c.noJob && state.job) return false;
+  if (c.holdAsset && !(state.hold[c.holdAsset] > 0)) return false;
+  if (c.crashed) {                       // 至少有一个资产相对合理价跌超 crashed 比例
+    let worst = 0;
+    for (const a of ASSETS) {
+      if (state.prices[a.id] > 0) worst = Math.min(worst, priceDeviation(a));
+    }
+    if (worst > -c.crashed) return false;
+  }
+  if (c.needRiskPos) {                   // 至少一个仓位已经浮亏到只剩保证金的 needRiskPos
+    if (!(state.pos || []).some(q => posValue(q) < q.margin * c.needRiskPos)) return false;
+  }
+  return true;
+}
+// 到点就弹 —— 用"必定触发"而不是概率，是为了让节奏可预期
+function maybeChoice() {
+  if (state.phase !== 'normal') return;
+  if (state.pendingEv) return;
+  if (state.day < CFG.EV_FIRST) return;
+  if (state.day - (state.lastEvDay || 0) < CFG.EV_GAP) return;
+  state.lastEvDay = state.day;
+  const pool = CHOICES.filter(c => evCondOk(c.cond));
+  if (!pool.length) return;              // 没有合适的就跳过这轮，不硬塞
+  const ev = shuffledPool(pool)[0];
+  // 记下触发前的时间流速：选完要还回去，不该让玩家为了一次抉择手动拨回 1x/4x
+  state.pendingEv = { id: ev.id, day: state.day, speed: state.speed };
+  state.speed = 0;                       // 强制暂停：这是"必须做的事"，不是背景噪音
+  openEventView();
+  renderHud();
+}
+function curChoice() {
+  return state.pendingEv ? CHOICES.find(c => c.id === state.pendingEv.id) : null;
+}
+/* 价格冲击：pct = -1 表示直接归零（持仓作废，和退市同样的处理）。
+   走 applyFloor 守硬底 —— 但"归零"是有意为之的例外，不受硬底保护。 */
+function shockAsset(asset, pct) {
+  const a = A_MAP[asset], p = state.prices[asset];
+  if (!(p > 0)) return;
+  state.prev[asset] = p;
+  const np = p * (1 + pct);
+  if (np <= 0.01) {
+    const lost = state.hold[asset] * p;
+    state.hold[asset] = 0; state.avg[asset] = 0;
+    state.prices[asset] = 0;
+    pushHist(asset, 0);
+    addLog('【归零】' + a.name + ' 直接清零，持仓全部作废' + (lost > 0.5 ? '（损失 ¥' + money(lost,0) + '）' : ''), 'bad');
+    return;
+  }
+  state.prices[asset] = np;
+  applyFloor(asset);
+  pushHist(asset, state.prices[asset]);
+  addLog('【事件】' + a.name + ' 单日 ' + (pct > 0 ? '+' : '') + (pct*100).toFixed(0) + '%', pct > 0 ? 'good' : 'bad');
+}
+function openEventView() {
+  const ev = curChoice();
+  if (!ev) return;
+  $('#evIcon').textContent = ev.icon;
+  $('#evTitle').textContent = ev.title;
+  $('#evText').textContent = ev.text;
+  $('#evOpts').innerHTML = ev.opts.map((o, i) =>
+    '<button class="ev-opt" data-ev="' + i + '">' +
+      '<span class="ol">' + o.label + '</span>' +
+      '<span class="os">' + o.sub + '</span>' +
+    '</button>'
+  ).join('');
+  $('#ovEvent').hidden = false;
+}
+/* 统一结算一个选项。词汇表见 CHOICES 上方的注释 —— 每个分支只做一件事，
+   全部追加到 out[] 里，最后合并成一条日志 + 一条 toast。 */
+function resolveChoice(i) {
+  const ev = curChoice();
+  if (!ev) return;
+  const o = ev.opts[i];
+  if (!o) return;
+  const out = [];
+  const before = netWorth();
+
+  if (o.none) out.push('按兵不动');
+
+  if (o.cash) {
+    state.cash = Math.max(0, state.cash + o.cash);
+    out.push((o.cash >= 0 ? '+' : '−') + '¥' + money(Math.abs(o.cash), 0));
+  }
+
+  if (o.costAdd) {
+    const dv = addCostBias(o.costAdd);
+    if (dv === 0) out.push('日耗已经顶到上限，这次没有变化');
+    else {
+      out.push('日耗 ' + (dv > 0 ? '+' : '−') + '¥' + Math.abs(dv) + '/天');
+      if (dv !== o.costAdd) out.push('（已到日耗偏移上限）');
+    }
+  }
+
+  if (o.bet) {
+    const s = state.cash * o.bet.frac;
+    if (Math.random() < o.bet.p) {
+      state.cash += s * o.bet.win;
+      state.evWin = (state.evWin || 0) + 1;
+      out.push('赌赢了 +¥' + money(s * o.bet.win, 0));
+    } else {
+      state.cash = Math.max(0, state.cash + s * o.bet.lose);
+      state.evLose = (state.evLose || 0) + 1;
+      out.push('赌输了 −¥' + money(s * Math.abs(o.bet.lose), 0));
+    }
+  }
+
+  if (o.cashIf) {
+    const c = o.cashIf;
+    const win = Math.random() < c.p;
+    const dv = win ? c.win : c.lose;
+    state.cash = Math.max(0, state.cash + dv);
+    state.evWin = (state.evWin || 0) + (win ? 1 : 0);
+    out.push(win ? '谈成了 ' : '谈崩了 ');
+    out.push((dv >= 0 ? '+' : '−') + '¥' + money(Math.abs(dv), 0));
+  }
+
+  if (o.costIf) {
+    const c = o.costIf;
+    const win = Math.random() < c.p;
+    const dv = addCostBias(win ? c.win : c.lose);
+    if (win) out.push('谈成了，日耗不变');
+    else if (dv > 0) out.push('谈崩了，日耗 +¥' + dv + '/天');
+    else out.push('谈崩了，但日耗已经顶到上限');
+  }
+
+  if (o.hit) {
+    shockAsset(o.hit.asset, o.hit.pct);
+    out.push(A_MAP[o.hit.asset].name + ' ' + (o.hit.pct > 0 ? '+' : '') + (o.hit.pct*100).toFixed(0) + '%');
+  }
+
+  if (o.hitIf) {
+    const c = o.hitIf;
+    const win = Math.random() < c.p;
+    const pct = win ? c.win : c.lose;
+    if (pct === 0) out.push('撑住了，什么都没发生');
+    else { shockAsset(c.asset, pct); out.push('没撑住 —— ' + A_MAP[c.asset].name + ' 归零'); }
+  }
+
+  if (o.buyPct) {
+    const amt = state.cash * o.buyPct.frac;
+    const p = state.prices[o.buyPct.asset];
+    if (amt > 1 && p > 0) { buyAsset(o.buyPct.asset, amt / p); out.push('买入 ' + A_MAP[o.buyPct.asset].name + ' ¥' + money(amt,0)); }
+    else out.push('没有可动用的现金');
+  }
+
+  if (o.sellAll) {
+    const q = state.hold[o.sellAll];
+    if (q > 0) { sellAsset(o.sellAll, q); out.push('清空 ' + A_MAP[o.sellAll].name); }
+    else out.push('本来就没持仓');
+  }
+
+  if (o.closeAll) {
+    const ids = (state.pos || []).map(q => q.id);
+    if (ids.length) {
+      const sum = closeAllPos(true);
+      out.push('平掉 ' + ids.length + ' 个仓位，退回 ¥' + money(sum, 0));
+    } else out.push('手上没有仓位');
+  }
+
+  if (o.addMargin) {
+    if (!(state.pos || []).length) out.push('没有仓位可补');
+    else {
+      let t = state.pos[0];
+      for (const q of state.pos) if (curLev(q) > curLev(t)) t = q;
+      const amt = Math.min(state.cash * o.addMargin, state.cash);
+      if (amt < 1) out.push('没有现金可补，只能硬扛');
+      else {
+        t.margin += amt; state.cash -= amt;
+        out.push('追加保证金 ¥' + money(amt,0) + '，实际杠杆降到 ' + curLev(t).toFixed(1) + 'x');
+      }
+    }
+  }
+
+  if (o.forceOut) {
+    if (!(state.pos || []).length) out.push('手上没有仓位');
+    else if (Math.random() < o.forceOut.p) out.push('扛过去了，仓位还在');
+    else {
+      let lost = 0;
+      for (const q of state.pos) lost += q.margin;
+      state.pos = [];
+      unlock('blowup');
+      out.push('扛不住 —— 全部仓位被强平，保证金 ¥' + money(lost,0) + ' 全损');
+    }
+  }
+
+  /* ---- 与工作绑定的词汇（裁员 / 挖角事件用）---- */
+  if (o.severJob) {                      // 拿 N 天工资的赔偿金，然后失业
+    const pay = state.job ? jobBasePay(state.job) : 0;
+    const amt = Math.round(pay * o.severJob);
+    state.job = null;
+    if (amt > 0) { state.cash += amt; out.push('拿 ' + o.severJob + ' 天工资的赔偿金 +¥' + money(amt, 0) + '，失业'); }
+    else out.push('失业');
+  }
+  if (o.switchJob) {                     // 换岗：'next' = 当前岗位的下一档（被挖角时无视工龄门槛）
+    const curIdx = state.job ? JOBS.findIndex(j => j.id === state.job.id) : -1;
+    let tgt = null;
+    if (o.switchJob === 'next') tgt = (curIdx >= 0 && curIdx < JOBS.length - 1) ? JOBS[curIdx + 1] : null;
+    else tgt = JOB_MAP[o.switchJob];
+    if (tgt && (!state.job || tgt.id !== state.job.id)) {
+      state.job = { id: tgt.id, level:1, exp:0, fatigue:0, overtime:false, sickLeft:0, taken: state.day };
+      out.push('入职「' + tgt.name + '」，日薪 ¥' + money(jobBasePay(state.job), 0));
+      checkAch();
+    } else out.push('你已经在这行的顶上了，对方开不出更好的位置');
+  }
+  if (o.demote) {                        // 降级留任
+    if (state.job && state.job.level > 1) {
+      state.job.level = Math.max(1, state.job.level - o.demote);
+      state.job.exp = 0;
+      out.push('降回「' + jobTitle(state.job) + '」，但工作保住了');
+    } else if (state.job) out.push('本来就是最低职级，没什么可降的 —— 工作保住了');
+  }
+
+  if ((state.evWin || 0) >= 8) unlock('lucky');
+
+  // 结算：清掉待决状态，把结果播报出去
+  const back = (state.pendingEv && typeof state.pendingEv.speed === 'number') ? state.pendingEv.speed : 1;
+  state.pendingEv = null;
+  $('#ovEvent').hidden = true;
+  const head = '【抉择】' + ev.title + ' → ' + o.label;
+  addLog(head + '：' + out.join('，'), o.kind === 'bad' ? 'bad' : 'gold');
+  toast(o.label + '：' + out.join('，'), 'gold');
+  const delta = netWorth() - before;
+  checkAch();
+  // 还把速度拨回去：触发前是几速就回几速（但结算了就别再跑起来）
+  state.speed = (state.phase === 'over') ? 0 : back;
+  renderHud();
+  render();
+  queueSave();
+  return delta;
+}
+
+/* =====================================================================
+   结算 / 评级 / 成就
+   ===================================================================== */
+function ratingOf(net) {
+  for (const r of CFG.RATING) if (net >= r.min) return r;
+  return CFG.RATING[CFG.RATING.length - 1];
+}
+function unlock(id) {
+  const a = ACH_MAP[id];
+  if (!a) return;
+  if (!meta.ach) meta.ach = {};
+  if (meta.ach[id]) return;             // 已经拿过就不再提示
+  meta.ach[id] = state ? state.day : 0;
+  Storage.saveMeta(meta);
+  if (state) addLog('【成就】' + a.icon + ' ' + a.name + ' —— ' + a.desc, 'gold');
+  toast('成就达成 ' + a.icon + ' ' + a.name, 'gold');
+}
+// 随手可查的成就（结算时机之外的那些）
+function checkAch() {
+  if (!state) return;
+  if (netWorth() >= CFG.GOAL) unlock('free');
+  if (state.lottery && (state.lottery.spent - state.lottery.won) >= 10000) unlock('lottery');
+  if (state.home && state.home.owned && state.home.id === 'villa') unlock('villa');
+  if (state.bankrupted === false && state.day >= CFG.SURVIVE_DAYS) unlock('survivor');
+  // 工作 / 经营线
+  if ((state.workDays || 0) >= 500) unlock('worker');
+  if ((state.shops || []).length >= 1) unlock('boss');
+  if ((state.shops || []).length >= SHOPS.length) unlock('tycoon');
+}
+/* 一局的收束。两个入口：净资产摸到 ¥1 亿（goal）、债务模式没能翻身（bankrupt）。
+   评级只看"结算那一刻的净资产"；goal 分支还会多给一个「继续玩下去」的出口。 */
+function settle(reason) {
+  if (state.phase === 'over') return;
+  state.phase = 'over';
+  state.speed = 0;
+  const nw = netWorth();
+  const r = ratingOf(nw);
+  state.result = { reason, day: state.day, net: nw, grade: r.g, title: r.title };
+  if (state.peakNet > (meta.bestNet || 0)) meta.bestNet = state.peakNet;
+  if (!meta.grades) meta.grades = { S:0, A:0, B:0, C:0, D:0 };
+  meta.grades[r.g] = (meta.grades[r.g] || 0) + 1;
+  Storage.saveMeta(meta);
+
+  if (r.g === 'S' || r.g === 'A') unlock('grade_a');
+  if (r.g === 'S' || r.g === 'A' || r.g === 'B') unlock('grade_b');
+  if (reason !== 'bankrupt') {
+    if (state.day >= CFG.SURVIVE_DAYS && state.home && state.home.id === 'share' && !state.home.owned) unlock('rent4ever');
+    if (!state.bankrupted) unlock('survivor');
+  }
+  if (nw < 1000) unlock('broke');
+
+  Storage.save(state);
+  showSettleOverlay();
+  renderHud();
+}
+
+/* =====================================================================
+   破产三明治
+   ===================================================================== */
+function enterDebt(shortfall) {
+  state.phase = 'debt';
+  state.bankrupted = true;      // 本局破产过 —— 「稳健派」成就因此拿不到
+  /* ★ 破产保护触发即暂停：债务模式是按「回合」推进的（每 tick = 1 回合），
+     若沿用破产瞬间的速度（可能 5x），6 个回合会在玩家回过神之前跑完 ——
+     这就是"猝不及防就游戏结束"的原因。这里强制归零，把节奏交还给玩家。 */
+  state.speed = 0;
+  // 强制平仓所有持仓抵债
+  let liquid = 0;
+  for (const a of ASSETS) {
+    liquid += state.hold[a.id] * state.prices[a.id];
+    state.hold[a.id] = 0;
+    state.avg[a.id] = 0;
+  }
+  // 杠杆仓位同样清零（它们的权益本来就已经打到接近 0 才会走到这一步）
+  if (state.pos && state.pos.length) {
+    let pv = 0;
+    for (const q of state.pos) pv += posValue(q);
+    liquid += pv;
+    state.pos = [];
+  }
+  // 自有房产同样要被清算（破产不分家）：先还银行，剩下的净值才算抵债
+  if (state.home.owned) {
+    const hName = (H_MAP[state.home.id] || HOUSES[0]).name;
+    const eq = housePrice(state.home.id) * (1 - CFG.HOUSE_FEE) - state.home.loan;
+    if (eq > 0) liquid += eq;
+    addLog('【清算】「' + hName + '」被强制拍卖' + (eq > 0 ? '，抵债 ¥' + money(eq, 0) : '，资不抵贷'), 'bad');
+    state.home.id = 'share'; state.home.owned = false;
+    state.home.paid = 0; state.home.loan = 0; state.home.pay = 0; state.home.loanLeft = 0;
+  }
+  state.cash = 0;
+  const clearance = Math.floor(state.day * CFG.DEBT_DAY_FEE);   // 破产清算成本：经营越久，欠的账单越多
+  state.debt.amount = Math.max(0, shortfall - liquid) + clearance;
+  state.debt.round = 0;
+  state.debt.workLeft = 3;
+  addLog('资产耗尽，触发破产保护 —— 进入债务模式（负债 ¥' + money(state.debt.amount, 0) + '）', 'bad');
+  toast('破产保护已触发 · 时间已暂停', 'bad');
+  queueSave();
+  openDebtView();
+  renderHud();          // 同步速度条高亮与「已暂停」徽章
+}
+
+function debtTick() {
+  const d = state.debt;
+  // 债务已还清 → 立即复活
+  if (d.amount <= 0.01) { d.amount = 0; revive(); return; }
+  d.amount = d.amount * (1 + CFG.DEBT_RATE) + state.cost;  // 利息 + 继续产生的生活费
+  d.round++;
+  d.workLeft = 3;
+  if (d.amount < 0) d.amount = 0;
+  if (d.round >= CFG.DEBT_ROUNDS) {
+    if (d.amount <= 0.01) revive();
+    else gameOver();
+  }
+  queueSave();
+}
+
+function debtWork() {
+  const d = state.debt;
+  if (state.phase !== 'debt' || d.workLeft <= 0) return;
+  const stage = 3 - d.workLeft;                                  // 0,1,2
+  const factor = [1, 0.68, 0.45][stage] || 0.45;
+  const income = Math.round((90 + Math.random() * 80) * factor);
+  state.cash += income;
+  d.workLeft--;
+  addLog('打零工收入 +¥' + income, 'good');
+  render();
+}
+function debtGamble() {
+  if (state.phase !== 'debt') return;
+  if (state.cash <= 0) { toast('没有本金可以孤注一掷', 'bad'); return; }
+  const bet = state.cash;
+  if (Math.random() < CFG.DEBT_GAMBLE_WIN) {
+    state.cash = Math.round(bet * CFG.DEBT_GAMBLE_MUL);
+    toast('赌赢了！+¥' + money(bet, 0), 'good');
+    addLog('孤注一掷成功：¥' + money(bet,0) + ' → ¥' + money(state.cash,0), 'gold');
+  } else {
+    state.cash = 0;
+    toast('赌输了，血本无归', 'bad');
+    addLog('孤注一掷失败：损失 ¥' + money(bet,0), 'bad');
+  }
+  render();
+}
+function debtRepay(all) {
+  if (state.phase !== 'debt') return;
+  const pay = all ? Math.min(state.cash, state.debt.amount) : Math.min(state.cash, state.debt.amount);
+  if (pay <= 0) { toast('没有可还的现金', 'bad'); return; }
+  state.cash -= pay;
+  state.debt.amount -= pay;
+  if (state.debt.amount < 0.01) { state.debt.amount = 0; }
+  addLog('偿还债务 -¥' + money(pay, 0), 'good');
+  if (state.debt.amount <= 0.01) {
+    toast('债务已清零！本回合结束后即可复活', 'gold');
+  }
+  render();
+}
+function revive() {
+  state.phase = 'normal';
+  state.debt.amount = 0;
+  state.debt.round = 0;
+  state.cost = dailyCost();
+  unlock('reborn');       // 浪子回头：在债务模式里还清全部欠款
+  addLog('债务清偿，成功复活！带着 ¥' + money(state.cash,0) + ' 重新出发', 'gold');
+  toast('债务清偿 · 复活成功', 'gold');
+  closeDebtView();
+  queueSave();
+}
+
+// 债务模式没能翻身 → 结算（评级通常是 C/D，看你还剩多少）
+function gameOver() {
+  meta.bankruptcies = (meta.bankruptcies || 0) + 1;
+  settle('bankrupt');
+}
+
+// 净资产摸到 ¥1 亿 → 世代终点，弹结算（可以在结算屏里选择继续玩）
+function winGame() {
+  settle('goal');
+}
+
+/* =====================================================================
+   渲染
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const viewEls = {};
+let debtViewEl = null;
+
+function render() {
+  renderHud();
+  if (state.phase === 'debt') { renderDebtView(); return; }
+  if (ui.view === 'market') renderMarket();
+  else if (ui.view === 'work') renderWork();
+  else if (ui.view === 'home') renderHome();
+  else if (ui.view === 'lottery') renderLottery();
+  else if (ui.view === 'log') renderLog();
+  else if (ui.view === 'more') renderMore();
+}
+
+function renderHud() {
+  const nw = netWorth();
+  $('#nwVal').textContent = money(nw);
+  const base = (ui.dayOpenNet !== undefined) ? ui.dayOpenNet : state.startNet;
+  const chg = base > 0 ? (nw - base) / base * 100 : 0;
+  const abs = nw - base;
+  const de = $('#nwDelta');
+  de.textContent = (abs >= 0 ? '+' : '-') + '¥' + money(Math.abs(abs), 0) + '（' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%）';
+  de.className = 'nw-delta ' + (abs > 0.005 ? 'up' : abs < -0.005 ? 'down' : 'flat');
+  $('#dayVal').textContent = state.day;
+  // 常驻称号：净资产每跨过一个门槛就换一次，让"进度"始终挂在眼前
+  const rkEl = $('#rankVal');
+  if (rkEl) {
+    const nr = ratingOf(netWorth());
+    if (rkEl.dataset.g !== nr.g) {
+      rkEl.dataset.g = nr.g;
+      rkEl.textContent = nr.title;
+      rkEl.className = 'rank-tag ' + (nr.tone || '');
+    }
+  }
+  $('#cashVal').textContent = '¥' + short(state.cash);
+  $('#holdVal').textContent = '¥' + short(holdValue());
+  // 日入：工资 + 店铺利润（固定金额，不随价格波动，所以直接取上次结算值）
+  const incEl = $('#incomeVal');
+  if (incEl) incEl.textContent = '¥' + Math.round(state.income || 0);
+  // 节衣缩食时加个 ↓，让玩家一眼看出"日耗变少了"是机制在起作用、不是 bug
+  $('#costVal').textContent = '¥' + Math.round(state.cost) + (state.austere ? ' ↓' : '');
+  document.querySelectorAll('#speedBar button').forEach(b => {
+    b.classList.toggle('active', parseFloat(b.dataset.sp) === state.speed);
+  });
+  // HUD 右侧运行状态徽章
+  const badge = $('#runBadge');
+  if (badge) {
+    const paused = !(state.speed > 0);
+    badge.classList.toggle('paused', paused);
+    $('#runBadgeTxt').textContent = paused ? '已暂停' : state.speed + 'x';
+  }
+}
+
+function sparkSVG(id, w, h) {
+  const arr = state.hist[id];
+  if (arr.length < 2) return '';
+  let min = Infinity, max = -Infinity;
+  for (const v of arr) { if (v < min) min = v; if (v > max) max = v; }
+  const rng = max - min || 1;
+  const step = w / (arr.length - 1);
+  let d = '';
+  arr.forEach((v, i) => {
+    const x = i * step;
+    const y = h - ((v - min) / rng) * h;
+    d += (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+  });
+  const rise = arr[arr.length-1] >= arr[0];
+  const color = rise ? '#f6465d' : '#0ecb81';
+  return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">' +
+    '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+}
+
+// 房价指数走势（复用 .spark 样式）
+function houseSpark(w, h) {
+  const arr = state.houseHist;
+  if (!arr || arr.length < 2) return '';
+  let min = Infinity, max = -Infinity;
+  for (const v of arr) { if (v < min) min = v; if (v > max) max = v; }
+  const rng = max - min || 1;
+  const step = w / (arr.length - 1);
+  let d = '';
+  arr.forEach((v, i) => {
+    const x = i * step, y = h - ((v - min) / rng) * h;
+    d += (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+  });
+  const rise = arr[arr.length - 1] >= arr[0];
+  const color = rise ? '#f6465d' : '#0ecb81';
+  return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">' +
+    '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+}
+
+/* ---------------- 工作页（打工 + 经营） ----------------
+   这一页先回答一个问题："我今天到底在赚多少、亏多少？"
+   所以最上面是一张"日收支"总账（工资 + 生意 − 开销 = 结余），
+   往下才是具体的求职与经营操作 —— 数值先行，操作其次。
+
+   岗位/店铺的价格都写成"每天多少钱"，而不是"涨了多少倍"，
+   这是刻意的：它们和日耗是同一个量纲，玩家一眼就能看出
+   "这份工作够不够养活自己"，不需要心算。 */
+function renderWork() {
+  const J = state.job;
+  const jd = J ? JOB_MAP[J.id] : null;
+  const wage = jobDailyPay();
+  const biz = shopDailyProfit();
+  const cost = state.cost || dailyCost();
+  const inc = wage + biz;
+  const net = inc - cost;
+  const netCls = net > 0.5 ? 'up' : net < -0.5 ? 'down' : 'flat';
+  const wd = state.workDays || 0;
+
+  let html = '';
+
+  // ① 日收支总账
+  html += '<div class="wsum">' +
+    '<div class="r"><span>工资收入</span><b>' + (wage > 0.001 ? '+¥' + money(wage, 1) + ' / 天' : '—') + '</b></div>' +
+    '<div class="r"><span>生意收入</span><b>' + (biz > 0.001 ? '+¥' + money(biz, 1) + ' / 天' : '—') + '</b></div>' +
+    '<div class="r"><span>每日开销</span><b style="color:var(--muted)">−¥' + money(cost, 1) + ' / 天' + (state.austere ? ' ↓' : '') + '</b></div>' +
+    '<div class="net"><span>每日结余</span><b class="' + netCls + '">' +
+      (net >= 0 ? '+' : '−') + '¥' + money(Math.abs(net), 1) + ' / 天</b></div>' +
+  '</div>';
+
+  // ② 当前工作
+  html += '<div class="sec-title">我的工作</div>';
+  if (!J) {
+    html += '<div class="wcard"><div class="ws" style="margin-top:0">你目前 <b style="color:var(--muted)">无业</b>。' +
+      '找一份工作至少有稳定的现金流 —— 光靠资产活着，数学上是撑不住的。</div></div>';
+  } else {
+    const bp = jobBasePay(J);
+    const need = jd.upDays * J.level - J.exp;
+    const maxed = J.level >= jd.levels;
+    const fat = Math.round(J.fatigue || 0);
+    const sick = J.sickLeft > 0;
+    html += '<div class="wcard hi">' +
+      '<div class="wt">' +
+        '<div class="wn"><span class="wic">' + jd.icon + '</span>' + jd.name + ' · ' + jobTitle(J) + '</div>' +
+        '<div class="wp">' + (sick ? '停薪中' : '¥' + money(bp, 1) + '/天') + '</div>' +
+      '</div>' +
+      '<div class="ws">' +
+        '职级 <b>' + J.level + ' / ' + jd.levels + '</b>　·　本岗位工龄 <b>' + J.exp + '</b> 天' +
+        (maxed ? '　·　<b style="color:var(--gold)">已是最高职级</b>'
+               : '　·　再干 <b>' + Math.max(0, Math.ceil(need)) + '</b> 天升职') +
+        (J.overtime && !sick ? '<br>加班中：日薪 ×' + CFG.OT_MUL + ' = <b style="color:var(--up)">¥' + money(bp * CFG.OT_MUL, 1) + '</b>（拿健康换的）' : '') +
+        (sick ? '<br><b style="color:var(--up)">累倒了，还有 ' + J.sickLeft + ' 天复工（这段时间没有工资）</b>' : '') +
+      '</div>' +
+      '<div class="fat' + (fat >= 70 ? ' hot' : '') + '">' +
+        '<div class="ft"><span>疲劳</span><span>' + fat + ' / 100</span></div>' +
+        '<div class="fb"><i style="width:' + fat + '%"></i></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:11px">' +
+        '<button class="mini' + (J.overtime ? ' dg' : ' go') + '" data-workot="' + (J.overtime ? '0' : '1') + '" style="flex:1">' +
+          (J.overtime ? '停止加班' : '开启加班 · 日薪 +' + Math.round((CFG.OT_MUL - 1) * 100) + '%') + '</button>' +
+        '<button class="mini dg" data-workquit="1">辞职</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // ③ 招聘市场（高薪岗位的门槛是"工龄"，所以低薪那份不是过渡、是起点）
+  html += '<div class="sec-title">招聘市场</div>';
+  for (const j of JOBS) {
+    const isCur = !!J && J.id === j.id;
+    const ok = wd >= j.req;
+    const top = Math.round(j.pay * (1 + j.grow * (j.levels - 1)));
+    html += '<div class="wrow' + (isCur ? ' on' : (ok ? '' : ' lock')) + '">' +
+      '<div class="wi">' + j.icon + '</div>' +
+      '<div class="wb">' +
+        '<div class="wnm">' + j.name + (isCur ? '<span class="pill g">在职</span>' : '') + '</div>' +
+        '<div class="wd">起薪 ¥' + j.pay + '/天 · 满级 ¥' + top + '/天（' + j.levels + ' 级）' +
+          (j.req > 0 ? '<br>需要累计上班 ' + j.req + ' 天（你现在 ' + wd + ' 天）' : '<br>无门槛') +
+        '</div>' +
+      '</div>' +
+      '<div class="wa">' +
+        (isCur ? '<span class="pill">已入职</span>'
+               : '<button class="mini' + (ok ? ' go' : '') + '" data-apply="' + j.id + '"' + (ok ? '' : ' disabled') + '>' +
+                 (ok ? (J ? '跳槽' : '应聘') : '未达标') + '</button>') +
+      '</div>' +
+    '</div>';
+  }
+
+  // ④ 我的生意
+  html += '<div class="sec-title">我的生意</div>';
+  const selfId = selfRunShopId();
+  const ledMap = {}; shopLedger().forEach(r => ledMap[r.id] = r);
+  for (const s of SHOPS) {
+    const mine = (state.shops || []).find(x => x.id === s.id);
+    const can = state.cash >= s.cost;
+    const led = ledMap[s.id];
+    const self = !!(led && led.self);
+    const hireNet = s.profit - s.wage;
+    html += '<div class="wrow' + (mine ? ' on' : (can ? '' : ' lock')) + '">' +
+      '<div class="wi">' + s.icon + '</div>' +
+      '<div class="wb">' +
+        '<div class="wnm">' + s.name +
+          (self ? '<span class="pill g">自营</span>' : (mine ? '<span class="pill">雇人看店</span>' : '')) + '</div>' +
+        '<div class="wd">' +
+          (mine
+            ? '日利 <b>¥' + money(led.net, 1) + '</b>'
+              + (self ? ' · 营收全额' : '（营收 ¥' + s.profit + ' − 人工 ¥' + money(s.wage * led.mgt, 0) + '）')
+              + ' · 已开 ' + (state.day - mine.day) + ' 天'
+            : '投入 ¥' + short(s.cost) + ' · 日营收 ¥' + s.profit + ' − 人工 ¥' + s.wage
+              + ' → 雇人净 ¥' + hireNet + '<br>约 ' + Math.round(s.cost / s.profit) + ' 天回本（自营） / '
+              + Math.round(s.cost / hireNet) + ' 天回本（雇人）') +
+          '<br>' + s.desc +
+        '</div>' +
+      '</div>' +
+      '<div class="wa">' +
+        (mine ? '<button class="mini dg" data-sellshop="' + s.id + '">转让</button>'
+              : '<button class="mini' + (can ? ' go' : '') + '" data-openshop="' + s.id + '"' + (can ? '' : ' disabled') + '>' +
+                (can ? '开店' : '¥' + short(s.cost)) + '</button>') +
+      '</div>' +
+    '</div>';
+  }
+  if ((state.shops || []).length) {
+    html += state.job
+      ? '<div class="hint">你在上班，所有店都只能雇人看 —— 每天要付工资，到手的是「营收 − 人工」那一部分。<br>想自己打理（拿全额营收）就只能辞掉工作，但那样就没有工资了。</div>'
+      : '<div class="hint">你目前没有正职，所以最赚钱的那家由你亲自打理（拿全额营收，省下它那份工资），其余仍要雇人。<br>店开得越多，每家的人力成本还要再往上浮 —— 一个人盯不过来。</div>';
+  } else {
+    html += '<div class="hint">生意是"用本金换固定日现金流"：投入一笔钱，之后每天稳稳进账，不波动也不会归零。<br>自营约 1 年出头回本，雇人约 2 年出头 —— 跑不赢股票，但它给的是最踏实的那份钱。</div>';
+  }
+
+  viewEls.work.innerHTML = html;
+}
+
+/* ---------------- 住房页 ---------------- */
+function renderHome() {
+  const el = viewEls.home;
+  const H = state.home;
+  const cur = H_MAP[H.id] || HOUSES[0];
+  const base = baseCost(), houseCost = homeDailyCost(), daily = dailyCost();
+  const idx = state.houseIdx;
+  const idxPct = (idx - 1) * 100;
+  const idxCls = idxPct > 0.05 ? 'up' : idxPct < -0.05 ? 'down' : 'flat';
+
+  let sub;
+  if (H.owned && H.loan > 0) {
+    sub = '自有 · 已还 ' + (CFG.HOUSE_TERM - H.loanLeft) + '/' + CFG.HOUSE_TERM
+        + ' 期 · 剩余贷款 ¥' + money(H.loan, 0) + ' · 日供 ¥' + money(H.pay, 0);
+  } else if (H.owned) {
+    sub = '自有 · 房贷已还清，不再产生住房支出';
+  } else {
+    sub = '租住 · 每日租金 ¥' + cur.rent;
+  }
+
+  let html = '';
+  html += '<div class="hm-hero">' +
+    '<div class="top"><div class="ico">' + cur.icon + '</div><div style="min-width:0">' +
+      '<div class="nm">' + homeLabel() + '</div>' +
+      '<div class="sb">' + sub + '</div>' +
+    '</div></div>' +
+    '<div class="cost"><span>生活费 ¥' + money(base, 0) + ' + 住房 ¥' + money(houseCost, 0) + '</span>' +
+      '<span>日耗 <b>¥' + money(daily, 0) + '</b></span></div>' +
+    (H.owned
+      ? '<button class="btn btn-sell" data-home="sell" style="width:100%;margin-top:10px;padding:10px 0;font-size:12px">' +
+          '卖出「' + cur.name + '」' +
+          '<small style="display:block;font-size:10px;opacity:.75;margin-top:2px">' +
+          '现价 ¥' + money(housePrice(H.id), 0) + ' · 卖出后自动搬回合租单间</small></button>'
+      : '') +
+  '</div>';
+
+  html += '<div class="hm-idx">' +
+    '<div class="row"><div class="k">房价指数（基准 1.00）</div>' +
+      '<div class="v ' + idxCls + '">' + idx.toFixed(3) + '（' + (idxPct >= 0 ? '+' : '') + idxPct.toFixed(1) + '%）</div></div>' +
+    houseSpark(380, 34) +
+    '<div class="hint" style="margin-top:8px;text-align:left">独立于股市的房产周期：长期慢牛，但会泡沫破裂。<br>' +
+      '买房前先看这条线 —— 高点接盘，可能要很久才回得来。</div>' +
+  '</div>';
+
+  // 换房时的可用资金 = 现金 + 旧房可变现净值（资不抵贷则换不了）
+  let extra = 0, canSell = true;
+  if (H.owned) {
+    extra = housePrice(H.id) * (1 - CFG.HOUSE_FEE) - H.loan;
+    if (extra < 0) { canSell = false; extra = 0; }
+  }
+  const avail = state.cash + extra;
+
+  html += '<div class="hm-list">' + HOUSES.map(x => {
+    const price = housePrice(x.id);
+    const here = x.id === H.id;
+    const hereRent = here && !H.owned;
+    const hereOwn  = here && H.owned;
+    const down = price * CFG.HOUSE_DOWN;
+    const pay = loanDaily(price - down);
+    const affordFull = canSell && avail + 0.005 >= price;
+    const affordLoan = canSell && avail + 0.005 >= down;
+
+    const btns = [];
+    // 已经住着的这一档不用再给「租」按钮；自有的话顶部有「卖出」（卖掉自动落回合租）
+    if (!hereRent && !hereOwn) btns.push('<button class="btn btn-ghost" data-home="rent" data-id="' + x.id + '">' +
+      '租<small>¥' + x.rent + '/天</small></button>');
+    if (!x.onlyRent && !hereOwn) {
+      btns.push('<button class="btn btn-buy" data-home="full" data-id="' + x.id + '"' + (affordFull ? '' : ' disabled') +
+        '>全款<small>¥' + money(price, 0) + '</small></button>');
+      btns.push('<button class="btn btn-primary" data-home="loan" data-id="' + x.id + '"' + (affordLoan ? '' : ' disabled') +
+        '>贷款<small>首付 ¥' + money(down, 0) + '<br>日供 ¥' + money(pay, 0) + '</small></button>');
+    }
+
+    return '<div class="hm-item' + (here ? ' cur' : '') + '">' +
+      '<div class="hd">' +
+        '<div class="ico">' + x.icon + '</div>' +
+        '<div style="min-width:0">' +
+          '<div class="nm">' + x.name + (here ? '<span class="tag t1">当前</span>' : '') + '</div>' +
+          '<div class="ds">' + x.desc + '</div>' +
+        '</div>' +
+        '<div class="num">' +
+          '<div class="p">' + (x.onlyRent ? '只租不卖' : '¥' + money(price, 0)) + '</div>' +
+          '<div class="r">租金 ¥' + x.rent + '/天</div>' +
+        '</div>' +
+      '</div>' +
+      (btns.length ? '<div class="hm-btns" style="grid-template-columns:repeat(' + btns.length + ',1fr)">' + btns.join('') + '</div>' : '') +
+    '</div>';
+  }).join('') + '</div>';
+
+  html += '<div class="hint">房子是硬开支：住哪儿都得每天掏钱，区别只是「交给房东」还是「交给银行」。<br>' +
+    '房价 ÷ 日租 ≈ 400 天 —— 住不满一年多，买房是亏的。</div>';
+
+  el.innerHTML = html;
+}
+
+function renderMarket() {
+  let html = '';
+  for (const a of ASSETS) {
+    const p = state.prices[a.id], pv = state.prev[a.id] || p;
+    const chg = pv > 0 ? (p - pv) / pv * 100 : 0;
+    const dead = p <= 0;                                  // 已退市
+    const cs = dead ? 'down' : chg > 0.0001 ? 'up' : chg < -0.0001 ? 'down' : 'flat';
+    // 濒危警告：跌进危险区就提醒玩家"这颗雷快炸了"
+    const danger = !dead && a.danger && p <= innerValue(a, state.day) * a.danger;
+    const qty = state.hold[a.id];
+    const val = qty * p;
+    const cost = state.avg[a.id] * qty;
+    const pl = val - cost;
+    const plPct = cost > 0 ? pl / cost * 100 : 0;
+    const sub = dead
+      ? '<span style="color:var(--up)">已退市 · 等待重新上市</span>'
+      : danger
+        ? '<span style="color:var(--up)">⚠ 濒临退市 · 随时可能归零</span>'
+        : a.desc;
+    html +=
+    '<div class="card">' +
+      '<div class="card-head">' +
+        '<div class="ic ' + a.cls + '">' + a.icon + '</div>' +
+        '<div>' +
+          '<div class="asset-name">' + a.name + '<span class="tag ' + a.tcls + '">' + a.tag + '</span></div>' +
+          '<div class="asset-sub">' + sub + '</div>' +
+        '</div>' +
+        '<div class="price-box">' +
+          '<div class="price"' + (dead ? ' style="color:var(--up);font-size:15px"' : '') + '>'
+            + (dead ? '已退市' : p.toFixed(2)) + '</div>' +
+          '<div class="chg ' + cs + '">' + (dead ? '归零' : (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%') + '</div>' +
+        '</div>' +
+      '</div>' +
+      (dead ? '' : devRow(a)) +
+      sparkSVG(a.id, 380, 30) +
+      '<div class="pos-row">' +
+        '<span>持仓 <b>' + qty.toFixed(2) + '</b> 份</span>' +
+        '<span>市值 <b>¥' + short(val) + '</b></span>' +
+        '<span>盈亏 <b class="' + (pl >= 0 ? 'up' : 'down') + '">' + (pl >= 0 ? '+' : '') + short(pl) + ' (' + (plPct>=0?'+':'') + plPct.toFixed(1) + '%)</b></span>' +
+      '</div>' +
+      '<div class="btns">' +
+        '<button class="btn btn-buy" data-act="buy" data-id="' + a.id + '"' + (dead || state.cash < p ? ' disabled' : '') + '>买入</button>' +
+        '<button class="btn btn-sell" data-act="sell" data-id="' + a.id + '"' + (qty <= 0 ? ' disabled' : '') + '>卖出</button>' +
+        '<button class="btn btn-lev" data-lev="' + a.id + '"' + (dead || state.cash < CFG.POS_MIN ? ' disabled' : '') + '>杠杆</button>' +
+      '</div>' +
+      posRows(a.id) +
+    '</div>';
+  }
+  viewEls.market.innerHTML = html;
+}
+
+/* 资产卡里那条「高估 / 低估」指示。指针按 ±2σ 打满，中线就是合理价。
+   这是均值回归模型带来的新信息 —— 旧版价格没有锚，只能说"涨了跌了"；
+   现在能回答一个真正能做决策的问题：**现在这个价比它该有的价贵了还是便宜了**。
+   读法很直接：指针偏右（红）= 追高危险，偏左（绿）= 打折值得看。 */
+function devRow(a) {
+  const dv = devInfo(a);
+  const pct = (dv.d >= 0 ? '+' : '−') + Math.abs(dv.d * 100).toFixed(1) + '%';
+  const pos = Math.max(3, Math.min(97, 50 + dv.z * 25));   // ±2σ 打满两端
+  const fair = innerValue(a, state.day);
+  return '<div class="dev-row" title="合理价 ¥' + fair.toFixed(2) + ' · 现价比它'
+      + (dv.d >= 0 ? '贵 ' : '便宜 ') + Math.abs(dv.d * 100).toFixed(1) + '%">' +
+    '<span class="dev-bar"><i class="' + dv.cls + '" style="left:' + pos.toFixed(1) + '%"></i></span>' +
+    '<span class="dev-txt ' + dv.cls + '">' + dv.word + ' ' + pct + '</span>' +
+  '</div>';
+}
+
+/* 资产卡里的杠杆仓位列表。每行显示：方向/倍数 · 保证金 · 当前价值 · 爆仓价 · 平仓按钮。
+   浮盈用红色、浮亏用绿色（跟着全局的红涨绿跌）。 */
+function posRows(assetId) {
+  const list = (state.pos || []).filter(q => q.asset === assetId);
+  if (!list.length) return '';
+  return list.map(q => {
+    const val = posValue(q);
+    const pl = val - q.margin;
+    const cls = pl > 0.005 ? 'up' : pl < -0.005 ? 'down' : 'flat';
+    const ds = q.dir > 0 ? '多' : '空';
+    return '<div class="lev-row ' + (q.dir>0?'l':'s') + '">' +
+      '<span class="lv">' + q.lev + 'x ' + ds + '</span>' +
+      '<span class="lm">本金 ¥' + short(q.margin)
+        + (q.fee > 0.5 ? ' <i style="font-style:normal;opacity:.55">−利息¥' + short(q.fee) + '</i>' : '') + '</span>' +
+      '<span class="lp ' + cls + '">¥' + short(val) + ' (' + (pl>=0?'+':'') + short(pl) + ')</span>' +
+      '<span class="lq">爆仓 ¥' + posLiqPrice(q).toFixed(2) + '</span>' +
+      '<button class="lclose" data-closepos="' + q.id + '">平仓</button>' +
+    '</div>';
+  }).join('');
+}
+
+function renderLottery() {
+  const L = state.lottery;
+  const t = curTicket();
+  const od = TICKET_ODDS[t.id];
+  const st = ticketStock(t), cap = CFG.LOTTERY_STOCK_CAP;
+  const restock = CFG.LOTTERY_RESTOCK[t.id] || 0;
+  const pct = Math.max(0, Math.min(100, st / cap * 100));
+  const maxN = maxBuyable(t);
+  const can1 = maxN >= 1;
+  const rate = L.spent > 0 ? (L.won / L.spent * 100).toFixed(0) + '%' : '—';
+  const feedHtml = L.feed.length
+    ? L.feed.map(f => f
+        ? '<div class="f ' + (f.amount >= t.price * BIG_WIN_MULT ? 'b' : 'w') + '">¥' + prizeLabel(f.amount) + '</div>'
+        : '<div class="f">未中</div>').join('')
+    : '<div class="f" style="min-width:auto;padding:0 10px;font-weight:400">还没刮过，点下面的按钮试试手气</div>';
+
+  const ticketCards = TICKETS.map(x => {
+    const xs = ticketStock(x);
+    return '<div class="tk-opt' + (x.id === t.id ? ' active' : '') + '" data-ticket="' + x.id + '">' +
+      '<div class="n">' + x.name + '</div>' +
+      '<div class="p">¥' + x.price + '</div>' +
+      '<div class="j">头奖 ' + prizeLabel(x.jackpot) + '</div>' +
+      '<div class="c">' + (xs > 0 ? '现货 ' + xs + ' 张' : '已售罄') + '</div>' +
+    '</div>';
+  }).join('');
+
+  // 批量按钮随本档现货自动缩水：现货多时可一次刮 10 张，或一口气买光本档
+  const bigN = Math.min(10, maxN);
+  const showBig = bigN >= 2;
+  const showMax = maxN > bigN;
+  const bigBtn = showBig
+    ? '<button class="btn btn-primary" data-scratch="' + bigN + '">买 ' + bigN + ' 张<small>¥' + money(bigN * t.price, 0) + '</small></button>'
+    : '';
+  const maxBtn = showMax
+    ? '<button class="btn btn-buy" data-scratch="max" style="width:100%;padding:13px 0;margin-bottom:4px">全部买下 · ' + maxN + ' 张（¥' + money(maxN * t.price, 0) + '）</button>'
+    : '';
+  const emptyHint = maxN === 0
+    ? '<div class="hint" style="margin:-2px 0 10px">' +
+        (st <= 0
+          ? '「' + t.name + '」暂时缺货，明天补货 ' + restock + ' 张 —— 也可以先攒几天'
+          : '现金不足，先攒点钱') + '</div>'
+    : '';
+
+  viewEls.lottery.innerHTML =
+    '<div class="sec-title">选择面值</div>' +
+    '<div class="tk-grid">' + ticketCards + '</div>' +
+
+    '<div class="lt-hero">' +
+      '<div class="big">¥' + money(t.jackpot, 0) + '</div>' +
+      '<div class="sub">「' + t.name + '」头奖 · 单张 ¥' + t.price + ' · 约 ' + od.winRate.toFixed(0) + '% 的票能中奖</div>' +
+    '</div>' +
+
+    '<div class="quota-box">' +
+      '<div class="quota-top"><span>彩票店 · 「' + t.name + '」现货</span><b>' + st + ' / ' + cap + ' 张</b></div>' +
+      '<div class="quota-bar"><div class="quota-fill" style="width:' + pct + '%"></div></div>' +
+      '<div class="quota-note">' + (st >= cap
+        ? '已攒满 ' + cap + ' 张 · 刮掉一些才会继续补货'
+        : '每天补 ' + restock + ' 张 · 没刮掉的会一直攒着（封顶 ' + cap + ' 张）') + '</div>' +
+    '</div>' +
+
+    '<div class="lt-actions"' + (showBig ? '' : ' style="grid-template-columns:1fr"') + '>' +
+      '<button class="btn btn-primary" data-scratch="1"' + (can1 ? '' : ' disabled') + '>买 1 张<small>¥' + t.price + '</small></button>' +
+      bigBtn +
+    '</div>' +
+    maxBtn + emptyHint +
+
+    '<div class="sec-title">最近刮奖</div>' +
+    '<div class="feed">' + feedHtml + '</div>' +
+
+    '<div class="sec-title">战绩</div>' +
+    '<div class="lt-stats">' +
+      '<div class="lt-stat"><div class="k">累计投入</div><div class="v">¥' + short(L.spent) + '</div></div>' +
+      '<div class="lt-stat"><div class="k">累计中奖</div><div class="v" style="color:var(--gold)">¥' + short(L.won) + '</div></div>' +
+      '<div class="lt-stat"><div class="k">返奖率</div><div class="v">' + rate + '</div></div>' +
+    '</div>' +
+    '<div class="more-item"><span class="k">单批最高中奖</span><b style="color:var(--gold)">¥' + money(L.bestWin, 0) + '</b></div>' +
+
+    '<div class="sec-title">中奖记录 · ' + t.name + ' 奖级</div>' +
+    prizesOf(t).slice().reverse().map(p =>
+      '<div class="more-item"><span class="k">' + p.name + '（¥' + money(p.amount, 0) + '）</span><b>' + (L.hits[p.name] || 0) + ' 次</b></div>'
+    ).join('') +
+
+    '<div class="hint" style="margin-top:14px">「' + t.name + '」返奖率约 ' + od.payback.toFixed(0) + '% —— 每投入 ¥100 期望只收回 ¥' + od.payback.toFixed(0) + '，长期必亏。<br>四档现货各自独立、每天各自补货，没刮掉的一直攒着 —— 想天天小刮一把也行，攒几天一次刮个爽也行。</div>';
+}
+
+function renderLog() {
+  if (!state.log.length) { viewEls.log.innerHTML = '<div class="empty">暂无记录</div>'; return; }
+  viewEls.log.innerHTML = '<div class="card" style="padding:4px 14px">' +
+    state.log.map(l =>
+      '<div class="log-item"><span class="log-day">D' + l.d + '</span><span class="log-txt ' + (l.tone||'') + '">' + l.t + '</span></div>'
+    ).join('') + '</div>';
+}
+
+function renderMore() {
+  const nw = netWorth();
+  const profit = nw - state.startNet;
+  const pct = state.startNet > 0 ? profit / state.startNet * 100 : 0;
+  // 财富进度：无尽模式没有"还剩多少天"了，改成"离下一档称号还差多少钱"。
+  // 进度条走对数刻度 —— 从 ¥1 万到 ¥1 亿是四个数量级，线性刻度下前 99% 会挤成一坨。
+  const nr = ratingOf(nw);
+  const nxtIdx = CFG.RATING.indexOf(nr) - 1;
+  const next = nxtIdx >= 0 ? CFG.RATING[nxtIdx] : null;
+  const goalPct = Math.max(0, Math.min(100, Math.log(Math.max(nw, 1)) / Math.log(CFG.GOAL) * 100));
+
+  // 成就墙：拿到的点亮，没拿到的灰着（让玩家知道还有什么可追）
+  const achRow = ACHIEVEMENTS.map(a => {
+    const got = !!(meta.ach && meta.ach[a.id]);
+    return '<div class="ach' + (got ? ' got' : '') + '">' +
+      '<span class="ai">' + a.icon + '</span>' +
+      '<span class="an">' + a.name + '</span>' +
+      '<span class="ad">' + (got ? ('第 ' + meta.ach[a.id] + ' 天达成') : a.desc) + '</span>' +
+    '</div>';
+  }).join('');
+  const gotCount = ACHIEVEMENTS.filter(a => meta.ach && meta.ach[a.id]).length;
+
+  const gd = meta.grades || {};
+  const gdTxt = ['S','A','B','C','D'].map(g => g + ' ' + (gd[g] || 0)).join(' · ');
+
+  viewEls.more.innerHTML =
+    '<div class="sec-title">财富进度</div>' +
+    '<div class="run-prog">' +
+      '<div class="rp-top"><span>第 ' + state.day + ' 天 · 无尽模式</span>' +
+        '<b style="color:var(--gold)">' + nr.g + ' · ' + nr.title + '</b></div>' +
+      '<div class="rp-bar"><i style="width:' + goalPct.toFixed(1) + '%"></i></div>' +
+      '<div class="rp-note">' +
+        (next ? '距「' + next.title + '」还差 ¥' + short(Math.max(0, next.min - nw)) : '已达最高档 —— 财富自由') +
+        '　·　向 ¥1 亿 的进度 ' + goalPct.toFixed(1) + '%' +
+      '</div>' +
+    '</div>' +
+    '<div class="more-item"><span class="k">当前净资产</span><b>¥' + money(nw) + '</b></div>' +
+    '<div class="more-item"><span class="k">累计收益</span><b class="' + (profit>=0?'up':'down') + '">' + (profit>=0?'+':'') + money(profit) + '（' + (pct>=0?'+':'') + pct.toFixed(1) + '%）</b></div>' +
+    '<div class="more-item"><span class="k">历史最高净资产</span><b>¥' + money(state.peakNet) + '</b></div>' +
+    '<div class="more-item"><span class="k">住房</span><b>' + homeLabel()
+      + (state.home.owned ? ' · 净值 ¥' + short(Math.max(0, houseEquity())) : '') + '</b></div>' +
+    '<div class="more-item"><span class="k">杠杆仓位</span><b>' + (state.pos || []).length + ' 个 · 权益 ¥' + short(posEquity()) + '</b></div>' +
+    '<div class="more-item"><span class="k">工作</span><b>' +
+      (state.job ? (JOB_MAP[state.job.id].name + ' · ' + jobTitle() + ' · ¥' + money(jobBasePay(), 1) + '/天') : '无业') +
+      '</b></div>' +
+    '<div class="more-item"><span class="k">生意</span><b>' + (state.shops || []).length + ' 家 · 日利 ¥'
+      + money(shopDailyProfit(), 1) + '</b></div>' +
+    '<div class="more-item"><span class="k">日固定支出</span><b>¥' + money(state.cost, 0) + ' / 天' +
+      (state.costBias ? '（事件 ' + (state.costBias>0?'+':'') + state.costBias + '）' : '') +
+      (state.austere ? ' <span style="color:var(--gold)">· 节衣缩食</span>' : '') + '</b></div>' +
+    '<div class="more-item"><span class="k">交易次数</span><b>' + state.trades + ' 次</b></div>' +
+    '<div class="more-item"><span class="k">抉择战绩</span><b>' + (state.evWin||0) + ' 胜 / ' + (state.evLose||0) + ' 负</b></div>' +
+    '<div class="more-item"><span class="k">财富自由线</span><b>¥' + short(CFG.GOAL) + '</b></div>' +
+
+    '<div class="sec-title">成就（' + gotCount + ' / ' + ACHIEVEMENTS.length + '）</div>' +
+    '<div class="ach-grid">' + achRow + '</div>' +
+
+    '<div class="sec-title">转生档案</div>' +
+    '<div class="more-item"><span class="k">第几世创业</span><b>第 ' + state.run + ' 世</b></div>' +
+    '<div class="more-item"><span class="k">累计破产次数</span><b>' + (meta.bankruptcies||0) + ' 次</b></div>' +
+    '<div class="more-item"><span class="k">历史最佳净资产</span><b>¥' + short(meta.bestNet||0) + '</b></div>' +
+    '<div class="more-item"><span class="k">评级战绩</span><b>' + gdTxt + '</b></div>' +
+
+    '<div class="sec-title">设置</div>' +
+    '<div class="more-item"><span class="k">时间流速</span><b>' + (state.speed===0?'已暂停':state.speed+' 倍速') + '</b></div>' +
+    '<div class="more-item" data-act="reset" style="cursor:pointer"><span class="k">重新开始本局</span><b style="color:var(--up)">重置 ›</b></div>' +
+    '<div class="more-item" data-act="wipe" style="cursor:pointer"><span class="k">清空全部存档</span><b style="color:var(--up)">清空 ›</b></div>' +
+
+    '<div class="hint" style="margin-top:16px">本游戏所有货币均为虚拟数字，不涉及任何真实资金。<br>数据保存在浏览器本地，暂未接入云端。</div>';
+}
+
+/* ---------------- 债务视图 ---------------- */
+function openDebtView() {
+  for (const k in viewEls) viewEls[k].hidden = true;
+  if (!debtViewEl) {
+    debtViewEl = document.createElement('main');
+    debtViewEl.className = 'view';
+    debtViewEl.id = 'view-debt';
+    $('#app').insertBefore(debtViewEl, $('#tabs'));
+  }
+  debtViewEl.hidden = false;
+  renderDebtView();
+}
+function closeDebtView() {
+  if (debtViewEl) debtViewEl.hidden = true;
+  for (const k in viewEls) viewEls[k].hidden = (k !== ui.view);
+}
+function renderDebtView() {
+  if (!debtViewEl) return;
+  const d = state.debt;
+  const left = CFG.DEBT_ROUNDS - d.round;
+  let dots = '';
+  for (let i = 0; i < CFG.DEBT_ROUNDS; i++) dots += '<div class="rd' + (i < d.round ? ' used' : '') + '"></div>';
+  debtViewEl.innerHTML =
+    '<div class="debt-view">' +
+      '<div class="debt-alert">' +
+        '<div class="h">破 产 保 护 中</div>' +
+        '<div class="big">¥' + money(d.amount) + '</div>' +
+        '<div class="s">破产清算成本 ¥' + money(CFG.DEBT_DAY_FEE * state.day, 0) + '（经营 ' + state.day + ' 天 × ' + CFG.DEBT_DAY_FEE + '）<br>每回合再计息 6% 并累加生活费</div>' +
+      '</div>' +
+      '<div class="round-dots">' + dots + '</div>' +
+      '<div class="hint" style="margin:-4px 0 14px">剩余 <b style="color:var(--gold)">' + left + '</b> 个交易日 · 若届时仍有负债将彻底破产</div>' +
+      '<div class="debt-cash"><div class="k">手上的现金</div><div class="v">¥' + money(state.cash) + '</div></div>' +
+      '<div class="debt-act">' +
+        '<button class="btn btn-ghost" data-debt="work"' + (d.workLeft <= 0 ? ' disabled' : '') + '>打零工 (+¥90~170)<small style="display:block;opacity:.6;font-size:10px">本回合剩余 ' + d.workLeft + ' 次，收益递减</small></button>' +
+        '<button class="btn btn-primary" data-debt="repay"' + (state.cash <= 0 || d.amount <= 0 ? ' disabled' : '') + '>用手上现金还债</button>' +
+        '<button class="btn btn-buy" data-debt="gamble"' + (state.cash <= 0 ? ' disabled' : '') + '>孤注一掷 · 48% 翻倍 / 52% 归零</button>' +
+      '</div>' +
+      '<div class="hint">打工是稳妥的翻身路，孤注一掷是最后的疯狂。<br>' +
+        (state.speed > 0
+          ? '时间正在流逝，别浪费回合。'
+          : '时间已暂停 —— 安排好本回合的操作后，点底部速度条推进。') +
+      '</div>' +
+    '</div>';
+}
+
+/* ---------------- 弹窗（买入/卖出） ---------------- */
+function openSheet(id, mode) {
+  const a = A_MAP[id], p = state.prices[id];
+  const isBuy = mode === 'buy';
+  if (!(p > 0)) { toast('「' + a.name + '」已退市，等它重新上市', 'bad'); return; }
+  const maxQty = isBuy ? state.cash / p : state.hold[id];
+  const maxAmt = isBuy ? state.cash : state.hold[id] * p;
+  const prevAmt = isBuy ? p * (isBuy ? maxQty : 0) : 0;
+  ui.sheet = { id, mode, qty: 0 };
+  $('#sheet').innerHTML =
+    '<div class="sheet-title">' + (isBuy ? '买入' : '卖出') + ' ' + a.name + '</div>' +
+    '<div class="sheet-desc">现价 ¥' + p.toFixed(2) + ' / 份 · 可' + (isBuy ? '买入' : '卖出') + ' ¥' + money(maxAmt) + '</div>' +
+    '<div class="qty-grid">' +
+      '<button class="qty-btn" data-q="0.1">10%<small>¥' + money(maxAmt*0.1) + '</small></button>' +
+      '<button class="qty-btn" data-q="0.25">25%<small>¥' + money(maxAmt*0.25) + '</small></button>' +
+      '<button class="qty-btn" data-q="0.5">50%<small>¥' + money(maxAmt*0.5) + '</small></button>' +
+      '<button class="qty-btn" data-q="0.75">75%<small>¥' + money(maxAmt*0.75) + '</small></button>' +
+      '<button class="qty-btn" data-q="1">全部<small>¥' + money(maxAmt) + '</small></button>' +
+      '<button class="qty-btn" data-q="0">取消<small>返回</small></button>' +
+    '</div>' +
+    '<div class="amt-row"><span>' + (isBuy ? '预计花费' : '预计获得') + '</span><b id="sheetAmt">¥0.00</b></div>' +
+    '<div class="amt-row"><span>交易后现金</span><b id="sheetAfter">¥' + money(state.cash) + '</b></div>';
+  $('#sheetMask').hidden = false;
+}
+function applyQty(frac) {
+  if (!ui.sheet) return;
+  const { id, mode } = ui.sheet, p = state.prices[id];
+  if (frac === 0) { closeSheet(); return; }
+  const maxQty = mode === 'buy' ? state.cash / p : state.hold[id];
+  const qty = maxQty * frac;
+  if (qty <= 0) { toast('数量不足', 'bad'); return; }
+  if (mode === 'buy') buyAsset(id, qty); else sellAsset(id, qty);
+  closeSheet();
+  render();
+}
+function closeSheet() { ui.sheet = null; ui.lev = null; $('#sheetMask').hidden = true; }
+
+/* ---------------- 杠杆交易弹窗 ----------------
+   故意做成"先看再开"：方向、倍数、投入三组选择全部实时预览 ——
+   尤其是「爆仓价」，让你在下单前就知道自己离死有多远。 */
+function openLevSheet(id) {
+  if (!(state.prices[id] > 0)) { toast('「' + A_MAP[id].name + '」已退市，开不了仓', 'bad'); return; }
+  ui.lev = { id, dir: 1, lev: 3, frac: 0.25 };
+  renderLevSheet();
+  $('#sheetMask').hidden = false;
+}
+function renderLevSheet() {
+  const L = ui.lev;
+  if (!L) return;
+  const a = A_MAP[L.id], p = state.prices[L.id];
+  const margin = Math.min(state.cash * L.frac, state.cash);
+  const notional = margin * L.lev;
+  const liq = p * (1 - 1 / (L.lev * L.dir));
+  const can = margin >= CFG.POS_MIN;
+  const seg = (arr) => '<div class="lev-seg">' + arr.join('') + '</div>';
+
+  // 教学用的几个数：借钱多少、标的动 1% 本金动多少、每天利息多少
+  const borrow   = Math.max(0, notional - margin);
+  const mv1      = notional * 0.01;                       // 标的动 1% 的盈亏额
+  const pct1     = margin > 0 ? mv1 / margin * 100 : 0;   // 折成本金百分比
+  const fee      = notional * CFG.POS_RATE;               // 每日融资利息
+  const feePct   = margin > 0 ? fee / margin * 100 : 0;
+  const movePct  = Math.abs((liq / p - 1) * 100);         // 离爆仓还差多少
+  const upCls    = L.dir > 0 ? 'up' : 'down';             // 标的涨，谁是赚
+  const dnCls    = L.dir > 0 ? 'down' : 'up';
+
+  $('#sheet').innerHTML =
+    '<div class="sheet-title">杠杆交易 · ' + a.name + '</div>' +
+    '<div class="sheet-desc">现价 ¥' + p.toFixed(2) + ' / 份 · 保证金至少 ¥' + CFG.POS_MIN + '</div>' +
+
+    '<div class="lev-expl">' +
+      '<div class="le-t">这是在干嘛？</div>' +
+      '<div class="le-b">' +
+        (L.dir > 0
+          ? '你掏 <b>¥' + money(margin) + '</b> 当本金，再向券商借 <b>¥' + money(borrow) +
+            '</b>，凑成 <b>¥' + money(notional) + '</b> 全部买进去。'
+          : '你掏 <b>¥' + money(margin) + '</b> 当本金，借来价值 <b>¥' + money(notional) +
+            '</b> 的仓位押它跌 —— 跌了赚差价，涨了赔差价。') +
+        '赚亏都按 <b>¥' + money(notional) + '</b> 这个总数算，所以每动 1%，你的本金就要动 <b>' +
+        pct1.toFixed(1) + '%</b>。<br>' +
+        '反过来：只要价格朝反方向走 <b>' + movePct.toFixed(1) + '%</b>，本金就归零，券商强制收走仓位 —— 这叫<b>爆仓</b>。' +
+      '</div>' +
+    '</div>' +
+
+    seg([
+      '<button class="seg' + (L.dir > 0 ? ' on up' : '') + '" data-ldir="1">做多 · 赌涨</button>',
+      '<button class="seg' + (L.dir < 0 ? ' on down' : '') + '" data-ldir="-1">做空 · 赌跌</button>',
+    ]) +
+    seg(CFG.POS_LEVS.map(k =>
+      '<button class="seg' + (L.lev === k ? ' on' : '') + '" data-lmult="' + k + '">' + k + 'x</button>')) +
+    seg([0.10, 0.25, 0.50, 1].map(f =>
+      '<button class="seg' + (L.frac === f ? ' on' : '') + '" data-lfrac="' + f + '">' + (f === 1 ? '全部' : (f*100) + '%') + '</button>')) +
+
+    '<div class="amt-row"><span>你出的本金</span><b>¥' + money(margin) + '</b></div>' +
+    '<div class="amt-row"><span>你押的仓位</span><b>¥' + money(notional) + '　(' + L.lev + ' 倍)</b></div>' +
+    '<div class="amt-row"><span>标的价格涨 1%</span><b class="' + upCls + '">' + (L.dir>0?'+':'−') + '¥' + money(mv1) + '</b></div>' +
+    '<div class="amt-row"><span>标的价格跌 1%</span><b class="' + dnCls + '">' + (L.dir>0?'−':'+') + '¥' + money(mv1) + '</b></div>' +
+    '<div class="amt-row"><span>' + (L.dir > 0 ? '跌破就爆仓' : '涨破就爆仓') + '</span><b style="color:var(--up)">¥' + liq.toFixed(2) + '　(反向 ' + movePct.toFixed(1) + '%)</b></div>' +
+    '<div class="amt-row"><span>每天融资利息</span><b style="color:var(--down)">−¥' + fee.toFixed(2) + '</b></div>' +
+
+    '<div class="lev-tip">利息从本金里天天扣 —— 拿得越久，爆仓价离现价越近。' +
+      (L.lev >= 5 ? '<br>' + L.lev + ' 倍是"猜对翻几倍、猜错当场清零"，仓位别超过你输得起的钱。' : '') +
+    '</div>' +
+
+    '<button class="btn btn-primary" data-lgo="1" style="width:100%;padding:13px 0;margin-top:6px"' +
+      (can ? '' : ' disabled') + '>' +
+      (can ? '确认开仓 · ' + L.lev + 'x ' + (L.dir > 0 ? '多' : '空') : '现金不足 ¥' + CFG.POS_MIN) + '</button>' +
+    '<button class="btn btn-ghost" data-lgo="0" style="width:100%;padding:11px 0;margin-top:8px">再想想</button>';
+}
+function applyLevGo(ok) {
+  const L = ui.lev;
+  if (!L) return;
+  if (!ok) { closeSheet(); return; }
+  const margin = Math.min(state.cash * L.frac, state.cash);
+  if (openPos(L.id, L.dir, L.lev, margin)) { closeSheet(); render(); }
+  else renderLevSheet();
+}
+
+/* ---------------- Toast ---------------- */
+function toast(text, cls) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (cls || '');
+  el.textContent = text;
+  $('#toasts').appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 300); }, 1900);
+  const box = $('#toasts');
+  while (box.children.length > 4) box.removeChild(box.firstChild);
+}
+
+/* ---------------- 结算（两个入口共用这一块） ----------------
+   · 'bankrupt' —— 债务没能清偿，本局结束，只能重开；
+   · 'goal'     —— 净资产摸到 ¥1 亿，财富自由：可以开启下一世代，也可以继续玩下去。 */
+function showSettleOverlay() {
+  const R = state.result || {};
+  const nw = (typeof R.net === 'number') ? R.net : netWorth();
+  const isBank = R.reason === 'bankrupt';
+  const isWin  = R.reason === 'goal';
+  $('#ovOverTitle').textContent = isBank ? '破产结算' : isWin ? '财富自由！' : '本局结算';
+  $('#ovOverSub').textContent = isBank
+    ? '债务没能清偿，第 ' + state.run + ' 世的创业在第 ' + state.day + ' 天终结。'
+    : isWin
+      ? '第 ' + state.day + ' 天，净资产摸到 ¥' + short(nw) + ' —— 你这一世实现了财富自由。'
+      : '本局收官，第 ' + state.day + ' 天，净资产 ¥' + short(nw) + '。';
+
+  const g = R.grade || 'D';
+  $('#ovGrade').className = 'grade g-' + g;
+  $('#ovGrade').innerHTML = '<div class="gl">' + g + '</div><div class="gt">' + (R.title || '') + '</div>';
+
+  const profit = nw - CFG.START_CASH;
+  $('#ovOverStats').innerHTML =
+    '<div class="s"><div class="k">最终净资产</div><div class="v">¥' + short(nw) + '</div></div>' +
+    '<div class="s"><div class="k">收益率</div><div class="v ' + (profit>=0?'up':'down') + '">' + (profit>=0?'+':'') + (profit/CFG.START_CASH*100).toFixed(0) + '%</div></div>' +
+    '<div class="s"><div class="k">经营天数</div><div class="v">' + state.day + '</div></div>' +
+    '<div class="s"><div class="k">最高净资产</div><div class="v">¥' + short(state.peakNet) + '</div></div>' +
+    '<div class="s"><div class="k">交易次数</div><div class="v">' + state.trades + '</div></div>' +
+    '<div class="s"><div class="k">抉择胜率</div><div class="v">' +
+      (((state.evWin||0) + (state.evLose||0)) > 0
+        ? ((state.evWin||0) / ((state.evWin||0) + (state.evLose||0)) * 100).toFixed(0) + '%'
+        : '—') + '</div></div>';
+
+  $('#btnReborn').textContent = isBank
+    ? '再来一局（第 ' + (state.run + 1) + ' 世）'
+    : '开启下一世代（第 ' + (state.run + 1) + ' 世）';
+  $('#btnKeepGoing').hidden = !isWin;   // 只有"财富自由"才给"继续玩"这个出口
+  $('#ovOver').hidden = false;
+}
+
+/* =====================================================================
+   事件绑定
+   ===================================================================== */
+document.getElementById('tabs').addEventListener('click', e => {
+  const b = e.target.closest('.tab'); if (!b) return;
+  ui.view = b.dataset.v;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === b));
+  for (const k in viewEls) viewEls[k].hidden = (k !== ui.view);
+  if (debtViewEl) debtViewEl.hidden = true;
+  render();
+});
+document.getElementById('speedBar').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.speed = parseFloat(b.dataset.sp);
+  renderHud(); queueSave();
+  // 债务模式下速度条是「推进回合」的开关，面板上的提示文案要跟着变
+  if (state.phase === 'debt') renderDebtView();
+});
+/* 工作页上的按钮（应聘 / 跳槽 / 加班开关 / 辞职 / 开店 / 转让）。
+   单独挂一条监听，不去碰 #app 那条主链路 —— 两边靠 data-* 前缀区分，互不干扰。 */
+document.getElementById('app').addEventListener('click', e => {
+  const ap = e.target.closest('[data-apply]');
+  if (ap) { if (takeJob(ap.dataset.apply)) render(); return; }
+  const ot = e.target.closest('[data-workot]');
+  if (ot) { setOvertime(ot.dataset.workot === '1'); render(); return; }
+  if (e.target.closest('[data-workquit]')) { quitJob(); render(); return; }
+  const os = e.target.closest('[data-openshop]');
+  if (os) { if (openShop(os.dataset.openshop)) render(); return; }
+  const ss = e.target.closest('[data-sellshop]');
+  if (ss) { sellShop(ss.dataset.sellshop); render(); return; }
+});
+document.getElementById('app').addEventListener('click', e => {
+  const t = e.target.closest('[data-act]');
+  if (t) {
+    const act = t.dataset.act;
+    if (act === 'buy') return openSheet(t.dataset.id, 'buy');
+    if (act === 'sell') return openSheet(t.dataset.id, 'sell');
+    if (act === 'reset') {
+      if (confirm('确定重新开始本局？当前进度清空。')) { resetInPlace(); location.reload(); }
+      return;
+    }
+    if (act === 'wipe') {
+      if (confirm('确定清空全部存档与转生记录？')) {
+        meta = { bankruptcies:0, bestNet:0, runs:0, ach:{}, grades:{S:0,A:0,B:0,C:0,D:0} };
+        Storage.saveMeta(meta);
+        resetInPlace(); location.reload();
+      }
+      return;
+    }
+  }
+  // 杠杆：开仓入口（资产卡上的「杠杆」按钮）与平仓
+  const lvOpen = e.target.closest('[data-lev]');
+  if (lvOpen) { if (!lvOpen.disabled) openLevSheet(lvOpen.dataset.lev); return; }
+  const lvClose = e.target.closest('[data-closepos]');
+  if (lvClose) { closePos(parseInt(lvClose.dataset.closepos, 10)); render(); return; }
+  const hAct = e.target.closest('[data-home]');
+  if (hAct) {
+    const act = hAct.dataset.home, id = hAct.dataset.id;
+    if (hAct.disabled) return;
+    if (act === 'rent') { if (rentHome(id)) render(); return; }
+    if (act === 'full' || act === 'loan') {
+      if (buyHome(id, act === 'loan')) render();
+      return;
+    }
+    if (act === 'sell') {
+      const net = sellHome(false);
+      if (net === null) { toast('资不抵贷：房子卖了还不够还银行，卖不掉', 'bad'); return; }
+      toast('已卖出 · 净得 ¥' + money(net, 0) + '，搬回合租单间', 'gold');
+      queueSave();
+      render();
+      return;
+    }
+    return;
+  }
+  const tkSel = e.target.closest('[data-ticket]');
+  if (tkSel) {
+    state.lottery.ticket = tkSel.dataset.ticket;
+    queueSave();
+    renderLottery();
+    return;
+  }
+  const sc = e.target.closest('[data-scratch]');
+  if (sc) {
+    const v = sc.dataset.scratch;
+    const t = curTicket();
+    const n = v === 'max' ? maxBuyable(t) : parseInt(v, 10);
+    if (n > 0) openScratch(n);
+    return;
+  }
+  const d = e.target.closest('[data-debt]');
+  if (d) {
+    const a = d.dataset.debt;
+    if (a === 'work') debtWork();
+    else if (a === 'gamble') debtGamble();
+    else if (a === 'repay') debtRepay(true);
+    return;
+  }
+});
+document.getElementById('sheetMask').addEventListener('click', e => {
+  if (e.target.id === 'sheetMask') return closeSheet();
+  const q = e.target.closest('[data-q]');
+  if (q) return applyQty(parseFloat(q.dataset.q));
+  // 杠杆弹窗里的三组选择：方向 / 倍数 / 投入比例，每次点完立即重绘预览
+  const ld = e.target.closest('[data-ldir]');
+  if (ld) { ui.lev.dir = parseInt(ld.dataset.ldir, 10); return renderLevSheet(); }
+  const lm = e.target.closest('[data-lmult]');
+  if (lm) { ui.lev.lev = parseInt(lm.dataset.lmult, 10); return renderLevSheet(); }
+  const lf = e.target.closest('[data-lfrac]');
+  if (lf) { ui.lev.frac = parseFloat(lf.dataset.lfrac); return renderLevSheet(); }
+  const lg = e.target.closest('[data-lgo]');
+  if (lg) return applyLevGo(lg.dataset.lgo === '1');
+});
+// 待决事件：点选项即结算（并解除暂停）
+document.getElementById('ovEvent').addEventListener('click', e => {
+  const b = e.target.closest('[data-ev]');
+  if (b) resolveChoice(parseInt(b.dataset.ev, 10));
+});
+document.getElementById('spClose').addEventListener('click', closeScratch);
+document.getElementById('spAll').addEventListener('click', () => {
+  const btn = $('#spAll');
+  if (!spSess || btn.disabled) return;
+  if (btn.dataset.mode === 'again') {
+    // 按按钮上记下的张数重复上一批（「再来一张」= 1，「再来 10 张」= 10）
+    const n = Math.max(1, parseInt(btn.dataset.n || '1', 10) || 1);
+    if (maxBuyable(curTicket()) >= 1) openScratch(n);
+  } else {
+    btn.disabled = true;                 // 翻牌动画期间防止重复触发
+    btn.innerHTML = '刮开中…';
+    revealAll();
+  }
+});
+document.getElementById('scratchMask').addEventListener('click', e => {
+  if (e.target.id === 'scratchMask') closeScratch();
+});
+
+/* ---- 手刮：Pointer 事件（触摸 / 鼠标 / 触控笔统一处理） ---- */
+(function bindCoat() {
+  const coat = $('#scCoat');
+  /* 判定区 = 奖面金额文字所在的那一条横带（票面正中，约 y 34%~68%）。
+     只看这一条：一刀扫过文字 = 已经看清结果 = 立刻揭晓。
+     统计整张票的比例没有意义 —— 玩家根本不会去刮边角，那不是"看没看到结果"。
+     （以 398×192 票面 + 30px 笔刷实测：正中一刀即达标；偏上/偏下扫不达标；
+       两刀必开。单笔满宽横划只占整张票面积的 15.5%。） */
+  const CORE = { x: 0.10, y: 0.34, w: 0.80, h: 0.34 };
+  const THRESHOLD = 0.40;    // 正中一刀实测 46%，留出余量，避免真机 dpr 差异导致忽开忽不开
+  const cleared = () => coatCleared(CORE);
+
+  coat.addEventListener('pointerdown', e => {
+    if (!spSess || spSess.revealing || $('#scCard').hidden) return;
+    e.preventDefault();
+    if (!spSess.ctx) { finishCurrent(); return; }    // 无 canvas：点一下即开
+    spSess.drawing = true;
+    spSess.lastPt = null;
+    try { coat.setPointerCapture(e.pointerId); } catch (err) {}
+    const ctx = spSess.ctx;
+    const p = coatPos(e, coat);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, ctx.lineWidth / 2, 0, Math.PI * 2);
+    ctx.fill();
+    spSess.lastPt = p;
+    spSess.checkAt = performance.now() + 130;
+  });
+
+  coat.addEventListener('pointermove', e => {
+    if (!spSess || !spSess.drawing || spSess.revealing) return;
+    e.preventDefault();
+    const p = coatPos(e, coat);
+    coatStroke(p.x, p.y);
+    const now = performance.now();
+    if (now >= spSess.checkAt) {
+      spSess.checkAt = now + 140;
+      if (cleared() >= THRESHOLD) finishCurrent();
+    }
+  });
+
+  ['pointerup', 'pointercancel'].forEach(ev => coat.addEventListener(ev, () => {
+    if (!spSess || !spSess.drawing) return;
+    spSess.drawing = false;
+    spSess.lastPt = null;
+    if (!spSess.revealing && spSess.ctx && cleared() >= THRESHOLD) finishCurrent();
+  }));
+})();
+document.getElementById('btnStart').addEventListener('click', () => {
+  $('#ovIntro').hidden = true;
+  state.speed = 1;
+  renderHud(); render();
+});
+document.getElementById('btnReborn').addEventListener('click', () => {
+  $('#ovOver').hidden = true;
+  restart();
+});
+document.getElementById('btnOverMore').addEventListener('click', () => {
+  $('#ovOver').hidden = true;
+  ui.view = 'more';
+  // 注意：这里绝不能把 phase 改回 normal —— 结算已经结束了，改回去等于"复活"
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.v === 'more'));
+  for (const k in viewEls) viewEls[k].hidden = (k !== 'more');
+  render();
+});
+/* 「继续玩下去」：财富自由不是终点站，关掉浮层接着跑。
+   这里改回 phase = 'normal' 是唯一有副作用的一步 —— 但只有 goal 分支才会显示这个按钮
+   （破产分支它 hidden），所以不存在"破产了还能复活"的漏洞。 */
+document.getElementById('btnKeepGoing').addEventListener('click', () => {
+  $('#ovOver').hidden = true;
+  state.phase = 'normal';
+  state.result = null;
+  state.speed = 1;
+  renderHud(); render();
+  toast('继续创业 —— ¥1 亿已经被你甩在身后', 'gold');
+});
+
+/* 重置/清档：必须在刷新之前「就地」把内存里的进度也换成新局。
+   原来只做 Storage.clear() + location.reload()：而 reload 会先触发 beforeunload / pagehide，
+   saveNow() 把内存里那份旧进度原样写回 localStorage —— clear 等于白清。
+   表现就是「点了重新开始本局，刷新回来还是重置前的那一天」，而且每次都是那一天。
+   顺带这也让刷新失败时（被内嵌浏览器 / 沙箱拦下）重置依然真正生效。 */
+function resetInPlace() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  Storage.clear();
+  restart();              // 内存里开新局，并写入 day=0 的新存档（重启后走"新档"分支）
+  state.speed = 0;        // 回到暂停，交给玩家自己按下开始
+  renderHud();
+}
+
+function restart() {
+  state = newState();
+  meta.runs = state.run;
+  Storage.saveMeta(meta);
+  ui.dayOpenNet = CFG.START_CASH;
+  ui.view = 'market';
+  ui.sheet = null; ui.lev = null;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.v === 'market'));
+  for (const k in viewEls) viewEls[k].hidden = (k !== 'market');
+  if (debtViewEl) debtViewEl.hidden = true;
+  // 收掉所有浮层，免得上一局的弹窗挂在新局上
+  ['#sheetMask', '#scratchMask', '#ovOver', '#ovEvent'].forEach(s => { const el = $(s); if (el) el.hidden = true; });
+  Storage.save(state);
+  render();
+  toast('第 ' + state.run + ' 世创业开始', 'gold');
+}
+
+/* =====================================================================
+   主循环
+   ===================================================================== */
+let last = performance.now(), acc = 0;
+function loop(now) {
+  const dt = Math.min((now - last) / 1000, 0.5);
+  last = now;
+  let ticked = false;
+  if (state && state.speed > 0 && state.phase !== 'over' && !state.pendingEv) {
+    acc += dt * state.speed;
+    let guard = 0;
+    while (acc >= 1 && guard++ < 24) { acc -= 1; tick(); ticked = true; }
+  }
+  if (ticked) {
+    render();
+    // 浮层打开时同步刷新"再来"按钮（各档现货会随时间补货）
+    if (!$('#scratchMask').hidden) refreshSpButtons();
+  }
+  requestAnimationFrame(loop);
+}
+
+/* =====================================================================
+   启动
+   ===================================================================== */
+(async function boot() {
+  viewEls.market = $('#view-market');
+  viewEls.work = $('#view-work');
+  viewEls.home = $('#view-home');
+  viewEls.lottery = $('#view-lottery');
+  viewEls.log = $('#view-log');
+  viewEls.more = $('#view-more');
+
+  meta = await Storage.loadMeta();
+  const saved = await Storage.load();
+
+  if (saved && saved.day > 0 && saved.phase !== 'over') {
+    state = Object.assign(newState(), saved);
+    // 兼容旧存档：补齐字段
+    if (!state.lottery) state.lottery = { stock:initStock(), spent:0, won:0, bought:0, bestWin:0, hits:{}, feed:[] };
+    // 现货口径改过三版：最早「点数」→ 上一版「彩票店今日限购 ¥100」→ 现在「按面值分档的独立现货」。
+    // 旧档的金额口径无法对应到某档的具体张数，直接发一份开局现货，并夹回上限。
+    if (!state.lottery.stock || typeof state.lottery.stock !== 'object') state.lottery.stock = initStock();
+    TICKETS.forEach(x => {
+      const v = state.lottery.stock[x.id];
+      state.lottery.stock[x.id] = typeof v === 'number'
+        ? Math.max(0, Math.min(CFG.LOTTERY_STOCK_CAP, Math.floor(v)))
+        : CFG.LOTTERY_STOCK_INIT;
+    });
+    delete state.lottery.limit;
+    delete state.lottery.quota;
+    // 票种 id 换过（旧：lucky/golden/diamond → 新：t10/t20/t30/t50），对不上就回到 ¥10 券
+    if (!state.lottery.ticket || !T_MAP[state.lottery.ticket]) state.lottery.ticket = 't10';
+    if (!state.lottery.hits || typeof state.lottery.hits !== 'object') state.lottery.hits = {};
+    ['回本','小奖','中奖','大奖','头奖'].forEach(k => {
+      if (typeof state.lottery.hits[k] !== 'number') state.lottery.hits[k] = 0;
+    });
+    if (!Array.isArray(state.lottery.feed)) state.lottery.feed = [];
+    if (typeof state.lottery.bestWin !== 'number') state.lottery.bestWin = 0;
+    delete state.lottery.pending;
+    if (!state.debt) state.debt = { amount:0, round:0, workLeft:3 };
+    // 住房（旧档没有这个字段）：一律补成「合租单间」，保证任何时刻都有地方住
+    if (!state.home || typeof state.home !== 'object' || !H_MAP[state.home.id]) {
+      state.home = { id:'share', owned:false, paid:0, loan:0, loanLeft:0, pay:0 };
+    } else {
+      const H = state.home;
+      H.owned = !!H.owned;
+      H.paid = Math.max(0, H.paid || 0);
+      H.loan = Math.max(0, H.loan || 0);
+      H.pay = Math.max(0, H.pay || 0);
+      H.loanLeft = Math.max(0, H.loanLeft || 0);
+      if (H.loan <= 0.01) { H.loan = 0; H.pay = 0; H.loanLeft = 0; }
+    }
+    if (typeof state.houseIdx !== 'number' || !(state.houseIdx > 0)) state.houseIdx = 1.0;
+    if (!Array.isArray(state.houseHist) || !state.houseHist.length) state.houseHist = [state.houseIdx];
+    state.cost = dailyCost();   // 旧档的 cost 不含房租，重算
+    // 新字段兼容（杠杆 / 抉择 / 结算）
+    if (!Array.isArray(state.pos)) state.pos = [];
+    if (typeof state.posSeq !== 'number') state.posSeq = 1 + state.pos.reduce((m,q) => Math.max(m, q.id || 0), 0);
+    if (state.pos.length) {
+      // 老仓位可能缺字段：补齐后再过滤掉已经无效的（开仓价 0 会导致除零）
+      state.pos = state.pos.filter(q => q && A_MAP[q.asset] && q.entry > 0 && q.margin > 0 && q.notional > 0);
+      state.pos.forEach(q => { q.dir = q.dir < 0 ? -1 : 1; q.lev = q.lev || Math.round(q.notional / q.margin); });
+    }
+    if (typeof state.costBias !== 'number') state.costBias = 0;
+    if (typeof state.austere !== 'boolean') state.austere = false;
+    // 工作 / 经营（老存档没有这几个字段）
+    if (!Array.isArray(state.shops)) state.shops = [];
+    state.shops = state.shops.filter(s => s && SHOP_MAP[s.id]);
+    if (typeof state.workDays !== 'number') state.workDays = 0;
+    if (typeof state.income !== 'number') state.income = 0;
+    if (state.job === undefined) state.job = null;
+    if (state.job && !JOB_MAP[state.job.id]) state.job = null;
+    if (state.job) {
+      const jd = JOB_MAP[state.job.id];
+      if (typeof state.job.level !== 'number') state.job.level = 1;
+      state.job.level = Math.max(1, Math.min(jd.levels, state.job.level));
+      if (typeof state.job.exp !== 'number') state.job.exp = 0;
+      if (typeof state.job.fatigue !== 'number') state.job.fatigue = 0;
+      if (typeof state.job.overtime !== 'boolean') state.job.overtime = false;
+      if (typeof state.job.sickLeft !== 'number') state.job.sickLeft = 0;
+    }
+    if (typeof state.evWin !== 'number') state.evWin = 0;
+    if (typeof state.evLose !== 'number') state.evLose = 0;
+    if (typeof state.lastEvDay !== 'number') state.lastEvDay = state.day;
+    if (typeof state.bankrupted !== 'boolean') state.bankrupted = false;
+    if (state.pendingEv && !CHOICES.some(c => c.id === state.pendingEv.id)) state.pendingEv = null;
+
+    ui.dayOpenNet = netWorth();
+    $('#ovIntro').hidden = true;
+    // 读档进债务模式时同样先暂停：否则一进游戏就按存档里的速度把债务回合跑完
+    if (state.phase === 'debt') { state.speed = 0; openDebtView(); }
+    // 上次是关在"待决事件"上的：读回来照样先暂停并把那个抉择摆回面前
+    else if (state.pendingEv) { state.speed = 0; openEventView(); }
+    toast('已读取上次进度 · 第 ' + state.day + ' 天', '');
+  } else {
+    state = newState();
+    meta.runs = state.run;
+    Storage.saveMeta(meta);
+    ui.dayOpenNet = CFG.START_CASH;
+    state.speed = 0;
+    addLog('获得启动资金 ¥' + money(CFG.START_CASH, 0) + '，创业开始', 'gold');
+  }
+
+  renderHud();
+  render();
+  requestAnimationFrame(loop);
+
+  // 存储不可用时明确告知：否则玩家只会看到"进度没保存/回到旧进度"这种鬼故事
+  if (storageBroken()) toast('浏览器存储不可用，本局进度不会被保存', 'bad');
+})();
+</script>
+</body>
+</html>
